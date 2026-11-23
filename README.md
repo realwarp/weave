@@ -113,11 +113,14 @@ network sync, and the GHOSTLINE "me too" counter.
 ## Project documents
 
 - [Architecture](docs/architecture.md), [protocol](docs/protocol.md) and the
-  [decision records](docs/adr/)
+  decision records (`docs/adr/`, starting with
+  [ADR-0001](docs/adr/0001-architecture-selection.md))
 - [Threat model](docs/threat-model.md)
 - [How this project was built with Kiro Crew](docs/kiro-crew.md)
 - [Disclosure](docs/disclosure.md): no prior code, the parent-repository situation, third-party tools
-- Review reports for each gate: [docs/reviews/](docs/reviews/)
+- Review reports for each gate: `docs/reviews/` (Gate 1: [T1.G2](docs/reviews/T1.G2.md),
+  Gate 2: [resolution](docs/reviews/T2.9-resolution.md), Gate 3:
+  [resolution](docs/reviews/T3.X2-resolution.md))
 
 ## License
 

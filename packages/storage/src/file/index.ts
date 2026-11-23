@@ -34,6 +34,10 @@ import {
 } from './lock.js';
 import { scanJournal } from './scan.js';
 
+/**
+ * Exports essential functions and types for manual recovery and external use.
+ * @remarks These are re-exported from the lock and format modules.
+ */
 export {
   defaultHostId,
   defaultIsAlive,
@@ -42,12 +46,17 @@ export {
   LOCK_FILE,
   GUARD_FILE,
 } from './lock.js';
+/** Exported lock types for external use. */
 export type { HostId, LockRecord, GuardRecord, Liveness } from './lock.js';
+/** Exported scan types and function for external use. */
 export { scanJournal, type ScanResult, type CorruptionKind } from './scan.js';
+/** Exported format types and constants for external use. */
 export { encodeRecord, decodeHeader, HEADER_BYTES, TRAILER_BYTES, MAGIC } from './format.js';
 
+/** Default journal rotation size in bytes (8 MiB). */
 export const DEFAULT_ROTATE_BYTES = 8 * 1024 * 1024;
 
+/** Failpoint names for crash simulation during journal rotation. */
 export const ROTATION_FAILPOINTS = [
   'after-snapshot-tmp',
   'after-snapshot-rename',
@@ -57,7 +66,9 @@ export const ROTATION_FAILPOINTS = [
   'after-cleanup',
 ] as const;
 
+/** Configuration options for the file storage adapter. */
 export interface FileStorageOptions {
+  /** Path to the data directory. */
   readonly dir: string;
   /** Rotate the journal into a new snapshot when it grows past this size (default 8 MiB). */
   readonly rotateBytes?: number;
@@ -66,7 +77,10 @@ export interface FileStorageOptions {
    * `validEndOffset` reported by an earlier STORAGE_CORRUPT error. Accepted only for a partial
    * header or a payload-damaged LAST record; refused for anything else.
    */
-  readonly onCorruptTail?: { readonly truncateAt: number };
+  readonly onCorruptTail?: {
+    /** Must equal the `validEndOffset` of the earlier STORAGE_CORRUPT error. */
+    readonly truncateAt: number;
+  };
   /** Test hook: called at named points; throwing simulates a crash at that point. */
   readonly failpoint?: (name: string) => void | Promise<void>;
   /** Test hook: identity of this host (default reads /proc on Linux). */
@@ -79,10 +93,15 @@ export interface FileStorageOptions {
   readonly onEvent?: (event: { type: 'open.truncated'; bytes: number }) => void;
 }
 
+/** Internal representation of the MANIFEST file contents. */
 interface Manifest {
+  /** Current journal generation number. */
   readonly generation: number;
+  /** Name of the snapshot file for this generation. */
   readonly snapshot: string;
+  /** Transaction ID covered by the snapshot. */
   readonly snapshotTxId: number;
+  /** Epoch counter (increases on each open). */
   readonly epoch: number;
 }
 
@@ -120,7 +139,13 @@ async function fsyncDir(dir: string): Promise<void> {
   }
 }
 
-/** Write + fsync + atomic rename. */
+/**
+ * Writes content to a temporary file, syncs, then atomically renames to the target name.
+ * @param dir - Directory containing the file.
+ * @param name - Target file name.
+ * @param content - Content to write.
+ * @param failAfterTmp - Optional failpoint hook called after writing but before rename.
+ */
 async function writeAtomic(
   dir: string,
   name: string,
@@ -186,6 +211,11 @@ function parseSnapshot(buf: Buffer, manifest: Manifest): Array<[string, string]>
   return entries;
 }
 
+/**
+ * Creates a file storage adapter with the specified options.
+ * @param options - Configuration for the storage adapter.
+ * @returns A StorageAdapter instance for transactional file-based storage.
+ */
 export function fileStorage(options: FileStorageOptions): StorageAdapter {
   const dir = path.resolve(options.dir);
   const rotateBytes = options.rotateBytes ?? DEFAULT_ROTATE_BYTES;
@@ -378,6 +408,7 @@ export function fileStorage(options: FileStorageOptions): StorageAdapter {
   }
 
   return {
+    /** Opens the storage directory, acquires the lock, and loads state. */
     open(): Promise<void> {
       return mutex.run(async () => {
         if (state === 'open') return;
@@ -387,6 +418,7 @@ export function fileStorage(options: FileStorageOptions): StorageAdapter {
       });
     },
 
+    /** Closes the storage, releasing the lock and journal handle. */
     close(): Promise<void> {
       return mutex.run(async () => {
         if (state !== 'open') {
@@ -400,6 +432,12 @@ export function fileStorage(options: FileStorageOptions): StorageAdapter {
       });
     },
 
+    /**
+     * Runs a transaction with read-only or read-write access.
+     * @param mode - 'ro' for read-only, 'rw' for read-write.
+     * @param fn - Transaction function that receives a StorageTx instance.
+     * @returns The result of the transaction function.
+     */
     transaction<T>(mode: 'ro' | 'rw', fn: (tx: StorageTx) => Promise<T>): Promise<T> {
       return mutex.run(async () => {
         if (state !== 'open')
@@ -430,5 +468,14 @@ export function fileStorage(options: FileStorageOptions): StorageAdapter {
   };
 }
 
-/** Exposed for the manual-recovery guide and tests: file names used by the adapter. */
-export const FILE_NAMES = { MANIFEST, snapName, journalName } as const;
+/**
+ * Exposed for the manual-recovery guide and tests: file names used by the adapter.
+ */
+export const FILE_NAMES = {
+  /** Name of the manifest file that names the current generation. */
+  MANIFEST,
+  /** Name of the snapshot file of a generation. */
+  snapName,
+  /** Name of the journal file of a generation. */
+  journalName,
+} as const;

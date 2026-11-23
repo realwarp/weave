@@ -8,6 +8,9 @@ import { WeaveError, type StorageAdapter, type StorageTx } from '@weave/core/pro
 import { SortedStore } from '../shared/sorted-store.js';
 import { Mutex, OverlayTx } from '../shared/transaction.js';
 
+/**
+ * In-memory backing store used by the memory storage adapter.
+ */
 export interface MemoryBacking {
   /** @internal */
   readonly store: SortedStore;
@@ -15,14 +18,25 @@ export interface MemoryBacking {
   inUse: boolean;
 }
 
+/**
+ * Creates a new in-memory backing store for testing.
+ * @returns A MemoryBacking object with an empty store and inUse flag set to false.
+ */
 export function createMemoryBacking(): MemoryBacking {
   return { store: new SortedStore(), inUse: false };
 }
 
+/** Options for the memory storage adapter. */
 export interface MemoryStorageOptions {
+  /** Optional shared backing store. Multiple adapters can reuse the same backing for durability tests. */
   readonly backing?: MemoryBacking;
 }
 
+/**
+ * Creates a memory storage adapter for testing or quick starts.
+ * @param options - Configuration including optional shared backing store.
+ * @returns A StorageAdapter implementation using in-memory storage.
+ */
 export function memoryStorage(options: MemoryStorageOptions = {}): StorageAdapter {
   const backing = options.backing ?? createMemoryBacking();
   const mutex = new Mutex();

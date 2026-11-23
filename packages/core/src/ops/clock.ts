@@ -5,10 +5,18 @@
  */
 import type { Clock, Scheduler } from '../contracts/env.js';
 
+/**
+ * A clock implementation that uses the platform's wall-clock time.
+ * Used ONLY for display values such as `wallTime` and `lastSyncWall` (A5).
+ */
 export const systemClock: Clock = {
   nowMs: () => Date.now(),
 };
 
+/**
+ * A scheduler implementation that uses the platform's monotonic timer and setTimeout.
+ * Used only for retry backoff, never for stored data (R10.2).
+ */
 export const systemScheduler: Scheduler = {
   monotonicMs: () => performance.now(),
   sleep: (ms: number) =>

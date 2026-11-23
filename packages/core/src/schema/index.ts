@@ -31,8 +31,16 @@ function spec<T>(
 const isString = (v: unknown): v is string => typeof v === 'string';
 const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
-/** Field builders (design 5.1). The resolver defaults to last-writer-wins. */
+/**
+ * Field builders (design 5.1). The resolver defaults to last-writer-wins.
+ * Each builder returns a field specification with the appropriate type and validator.
+ */
 export const f = {
+  /**
+   * Creates a string field specification.
+   * @param options Configuration options including required status and resolver choice.
+   * @returns A field specification for string values.
+   */
   string<const O extends OrderedOptions = Record<never, never>>(options?: O): Spec<string, O> {
     return spec<string>(
       'string',
@@ -41,6 +49,11 @@ export const f = {
       isString,
     ) as Spec<string, O>;
   },
+  /**
+   * Creates a number field specification.
+   * @param options Configuration options including required status and resolver choice.
+   * @returns A field specification for numeric values.
+   */
   number<const O extends OrderedOptions = Record<never, never>>(options?: O): Spec<number, O> {
     return spec<number>(
       'number',
@@ -49,6 +62,11 @@ export const f = {
       isNumber,
     ) as Spec<number, O>;
   },
+  /**
+   * Creates a boolean field specification.
+   * @param options Configuration options including required status.
+   * @returns A field specification for boolean values.
+   */
   boolean<const O extends BaseOptions = Record<never, never>>(options?: O): Spec<boolean, O> {
     return spec<boolean>(
       'boolean',
@@ -57,6 +75,11 @@ export const f = {
       (v) => typeof v === 'boolean',
     ) as Spec<boolean, O>;
   },
+  /**
+   * Creates a JSON field specification that accepts any valid JSON value.
+   * @param options Configuration options including required status.
+   * @returns A field specification for JSON values.
+   */
   json<const O extends BaseOptions = Record<never, never>>(options?: O): Spec<JsonValue, O> {
     return spec<JsonValue>(
       'json',
@@ -65,7 +88,13 @@ export const f = {
       () => true,
     ) as Spec<JsonValue, O>;
   },
-  /** A set of elements merged by union (resolver `set-union`). Stored as a sorted array. */
+  /**
+   * Creates a set field specification whose values are arrays of element values.
+   * Elements are merged by union using the `set-union` resolver.
+   * @param element The field specification for set elements.
+   * @param options Configuration options including required status.
+   * @returns A field specification for arrays of element values.
+   */
   set<T, const O extends BaseOptions = Record<never, never>>(
     element: FieldSpec<T>,
     options?: O,
@@ -78,7 +107,13 @@ export const f = {
       { element: element as FieldSpec },
     ) as Spec<T[], O>;
   },
-  /** One of an ordered list of distinct values; concurrent values resolve to the highest rank. */
+  /**
+   * Creates a rank field specification that accepts only values from a predefined ordered list.
+   * Concurrent values resolve to the highest rank in the list.
+   * @param values An ordered list of distinct values.
+   * @param options Configuration options including required status.
+   * @returns A field specification for ranked values.
+   */
   rank<const V extends string | number, const O extends BaseOptions = Record<never, never>>(
     values: readonly V[],
     options?: O,
@@ -106,7 +141,12 @@ export const f = {
 
 const validFieldName = (name: string): boolean => name.length > 0 && !name.includes('\u0000');
 
-/** Declares a collection (R8.1). Checks the name, version, fields and the migration chain. */
+/**
+ * Declares a collection with its fields, version, and migration path.
+ * @param definition The collection definition including name, version, fields, and optional migrations.
+ * @returns A frozen collection definition.
+ * @throws VALIDATION_FAILED if the name, version, fields, or migration chain are invalid.
+ */
 export function defineCollection<const F extends Record<string, FieldSpec>>(definition: {
   readonly name: string;
   readonly version: number;
@@ -147,7 +187,13 @@ function fail(
   throw new WeaveError(code, message, { details });
 }
 
-/** Type checks of the given fields against the current schema (unknown fields are rejected). */
+/**
+ * Type checks the given fields against the current schema.
+ * Unknown fields are rejected.
+ * @param definition The collection definition to validate against.
+ * @param fields The fields to validate.
+ * @throws VALIDATION_FAILED if any field is unknown or has an invalid type.
+ */
 export function checkFieldTypes(
   definition: CollectionDefinition,
   fields: Readonly<Record<string, JsonValue>>,
@@ -173,7 +219,14 @@ export function checkFieldTypes(
   }
 }
 
-/** Validation of a local write before anything is stored (R8.2). */
+/**
+ * Validation of a local write before anything is stored (R8.2).
+ * @param definition The collection definition to validate against.
+ * @param kind `'create'` or `'update'`.
+ * @param fields The fields to validate.
+ * @returns The validated and normalized record object.
+ * @throws VALIDATION_FAILED if validation fails.
+ */
 export function validateLocalWrite(
   definition: CollectionDefinition,
   kind: 'create' | 'update',
@@ -213,7 +266,10 @@ function deepFreeze<T>(value: T): T {
 /**
  * Upgrades the fields of one op from `fromVersion` to the collection's current version (R8.3).
  * Each migration receives a deep-frozen copy and its output is checked against the D7 value rules.
- * Throws MIGRATION_FAILED when a migration throws or returns an unsupported value.
+ * @param definition The collection definition with migrations.
+ * @param input The fields and metadata to migrate.
+ * @returns The migrated fields.
+ * @throws MIGRATION_FAILED if a migration throws or returns an unsupported value.
  */
 export function migrateFields(
   definition: CollectionDefinition,
@@ -273,7 +329,13 @@ export function migrateFields(
   return fields;
 }
 
-/** Migrates the fields of an op and checks the types of the result (design 7.3 Phase A2). */
+/**
+ * Migrates the fields of an op and checks the types of the result (design 7.3 Phase A2).
+ * @param definition The collection definition with migrations.
+ * @param input The fields and metadata to migrate and validate.
+ * @returns The migrated fields that pass type validation.
+ * @throws MIGRATION_FAILED if migration or type validation fails.
+ */
 export function migrateAndCheck(
   definition: CollectionDefinition,
   input: {

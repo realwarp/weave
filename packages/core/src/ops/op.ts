@@ -22,22 +22,40 @@ export const HASH_PATTERN = /^[0-9a-f]{64}$/;
 export const DEFAULT_MAX_OP_BYTES = 64 * 1024;
 
 export interface BuildOpInput {
+  /** The replica identifier of the writer. */
   readonly replicaId: ReplicaId;
   /** The writer's ACCEPTED vector (D2). Its own entry is `seq - 1`. */
   readonly vector: VersionVector;
   /** Max lamport over ACCEPTED ops (D2). */
   readonly maxLamport: number;
+  /** The collection name of the record being modified. */
   readonly collection: string;
+  /** The record ID being modified. */
   readonly recordId: string;
+  /** The kind of operation: 'set' or 'delete'. */
   readonly kind: 'set' | 'delete';
+  /** The schema version of the record. */
   readonly schemaVersion: number;
+  /** Field name to new value. Empty for `delete`. */
   readonly fields: Readonly<Record<string, JsonValue>>;
+  /** Wall-clock time of the write (display only). */
   readonly wallTime?: number;
+  /** Maximum op line size in bytes. */
   readonly maxOpBytes?: number;
 }
 
-/** Builds a complete, hashed op from the accepted state of the writer (design 7.2 step 4). */
-export async function buildOp(input: BuildOpInput): Promise<{ op: Op; line: string }> {
+/**
+ * Builds a complete, hashed op from the accepted state of the writer (design 7.2 step 4).
+ * @param input The input parameters needed to construct the op.
+ * @returns The op and its serialized line.
+ * @throws VALIDATION_FAILED if the op exceeds the size limit.
+ */
+export async function buildOp(input: BuildOpInput): Promise<{
+  /** The new op, with its hash. */
+  op: Op;
+  /** The op's canonical line, as stored and sent. */
+  line: string;
+}> {
   const context = normalizeVector(input.vector);
   const payload: OpPayload = {
     replicaId: input.replicaId,
@@ -52,7 +70,7 @@ export async function buildOp(input: BuildOpInput): Promise<{ op: Op; line: stri
   };
   validatePayloadShape(payload);
   const hash = await opHash(payload);
-  const op: Op =
+  const op =
     input.wallTime === undefined
       ? { ...payload, hash }
       : { ...payload, hash, wallTime: input.wallTime };
@@ -152,6 +170,7 @@ const REQUIRED_KEYS = [
 ] as const;
 
 export interface VerifyOptions {
+  /** Maximum op line size in bytes. */
   readonly maxOpBytes?: number;
 }
 
@@ -160,6 +179,9 @@ export interface VerifyOptions {
  * size, JSON structure with the exact key set, value rules (D7), canonical form, and the hash
  * recomputed over the D2 payload. Throws VALIDATION_FAILED, UNSUPPORTED_VALUE, NOT_SUPPORTED or
  * INTEGRITY_CONFLICT. Does NOT apply any application schema.
+ * @param line The op line to verify.
+ * @param options Optional size limit configuration.
+ * @returns The verified op.
  */
 export async function verifyOpLine(line: string, options: VerifyOptions = {}): Promise<Op> {
   if (typeof line !== 'string') invalid('Op line must be a string');
@@ -199,12 +221,21 @@ export async function verifyOpLine(line: string, options: VerifyOptions = {}): P
   return op;
 }
 
-/** Reads the envelope fields of a stored, already verified line without re-verifying it. */
+/**
+ * Reads the envelope fields of a stored, already verified line without re-verifying it.
+ * @param line The op line to parse.
+ * @returns The envelope fields: replicaId, seq, collection, schemaVersion, and hash.
+ */
 export function readEnvelope(line: string): {
+  /** The op's origin replica. */
   replicaId: string;
+  /** The op's sequence number within its origin. */
   seq: number;
+  /** The collection the op belongs to. */
   collection: string;
+  /** The schema version the op was written with. */
   schemaVersion: number;
+  /** The op's declared hash (not verified by this function). */
   hash: string;
 } {
   const op = JSON.parse(line) as Op;

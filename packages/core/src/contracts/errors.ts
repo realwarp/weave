@@ -20,20 +20,28 @@ export const ERROR_CODES = [
   'STORAGE_LOCK_LOST',
 ] as const;
 
+/** One of the stable error codes in `ERROR_CODES`. */
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
+/** Options for creating a WeaveError. */
 export interface WeaveErrorOptions {
   /** Extra machine-readable context (for example the JSON path of an unsupported value). */
   readonly details?: Readonly<Record<string, unknown>>;
+  /** The underlying error that caused this one. */
   readonly cause?: unknown;
   /** Transport errors only: true when a retry may succeed (R10.2). */
   readonly retryable?: boolean;
 }
 
 /** The single error type thrown by WEAVE. Always carries a stable `code`. */
+
+/** The single error type thrown by WEAVE. Always carries a stable `code`. */
 export class WeaveError extends Error {
+  /** The stable error code for programmatic handling. */
   readonly code: ErrorCode;
+  /** Extra machine-readable context. */
   readonly details: Readonly<Record<string, unknown>>;
+  /** Transport errors only: true when a retry may succeed (R10.2). */
   readonly retryable: boolean;
 
   constructor(code: ErrorCode, message: string, options: WeaveErrorOptions = {}) {
@@ -45,6 +53,7 @@ export class WeaveError extends Error {
   }
 }
 
+/** Returns true if the value is a WeaveError instance. */
 export function isWeaveError(value: unknown): value is WeaveError {
   return value instanceof WeaveError;
 }

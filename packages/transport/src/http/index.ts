@@ -29,13 +29,15 @@ export {
   encodePushRequest,
 } from './ndjson.js';
 
+/** HTTP transport options for the relay client. */
 export interface HttpTransportOptions {
-  /** For example `http://127.0.0.1:8787`. */
+  /** Base URL of the relay, for example `http://127.0.0.1:8787`. */
   readonly baseUrl: string;
-  /** Bearer token, when the relay requires one. */
+  /** Bearer token for authentication, when the relay requires one. */
   readonly token?: string;
+  /** Custom fetch implementation for testing. */
   readonly fetch?: typeof fetch;
-  /** Per-request timeout (default 30 s). */
+  /** Per-request timeout in milliseconds (default 30000). */
   readonly timeoutMs?: number;
 }
 
@@ -83,6 +85,11 @@ async function errorFromResponse(response: Response): Promise<WeaveError> {
   return transportError(`Relay answered HTTP ${status}`, false, { status });
 }
 
+/**
+ * Creates an HTTP transport that calls the WEAVE relay (design 10.1).
+ * @param options - Transport configuration including base URL and optional authentication.
+ * @returns A SyncEndpoint implementation using HTTP requests.
+ */
 export function httpTransport(options: HttpTransportOptions): SyncEndpoint {
   const base = options.baseUrl.replace(/\/+$/, '');
   const doFetch = options.fetch ?? globalThis.fetch.bind(globalThis);
@@ -125,10 +132,20 @@ export function httpTransport(options: HttpTransportOptions): SyncEndpoint {
   }
 
   return {
+    /**
+     * Pulls ops from the relay for a given replica and vector.
+     * @param request - The pull request containing replica ID, vector, support, limit, and optional origins.
+     * @returns The pull response with ops and metadata.
+     */
     async pull(request: PullRequest): Promise<PullResponse> {
       const response = await call('/v1/pull', JSON.stringify(request), 'application/json');
       return decodePullResponse(await readText(response, '/v1/pull'));
     },
+    /**
+     * Pushes ops to the relay.
+     * @param request - The push request containing replica ID, support, and ops.
+     * @returns The push response with durable acks, rejected ops, and other metadata.
+     */
     async push(request: PushRequest): Promise<PushResponse> {
       const response = await call('/v1/push', encodePushRequest(request), 'application/x-ndjson');
       const text = await readText(response, '/v1/push');
@@ -138,6 +155,10 @@ export function httpTransport(options: HttpTransportOptions): SyncEndpoint {
         throw transportError('The push response is not JSON', true, {}, e);
       }
     },
+    /**
+     * Acknowledges durable ops to the relay.
+     * @param request - The acknowledgment request containing replica ID and durable vector.
+     */
     async ack(request: AckRequest): Promise<void> {
       const response = await call('/v1/ack', JSON.stringify(request), 'application/json');
       await readText(response, '/v1/ack');

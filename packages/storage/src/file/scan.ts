@@ -11,40 +11,70 @@ import {
   type WriteSet,
 } from './format.js';
 
+/** Type of corruption detected during journal scanning. */
 export type CorruptionKind = 'partial-header' | 'header' | 'payload' | 'sequence';
 
+/** A single journal record as parsed during scan. */
 export interface ScanRecord {
+  /** Transaction ID of the record. */
   readonly txId: number;
+  /** Epoch of the record (increases on restarts). */
   readonly epoch: number;
+  /** Write set contained in the record. */
   readonly writes: WriteSet;
 }
 
+/** Result of scanning a journal buffer. */
 export type ScanResult =
-  | { readonly status: 'clean'; readonly records: ScanRecord[]; readonly end: number }
+  | {
+      /** Every record verified and the file ends exactly after the last one. */
+      readonly status: 'clean';
+      /** The verified records, in order. */
+      readonly records: ScanRecord[];
+      /** Byte offset just after the last record (the file size). */
+      readonly end: number;
+    }
   | {
       /** Only case that is truncated automatically: a verified header promises more bytes. */
       readonly status: 'incomplete';
+      /** The verified records before the incomplete append. */
       readonly records: ScanRecord[];
+      /** Byte offset where the incomplete append starts; the file is cut here. */
       readonly validEnd: number;
     }
   | {
+      /** Damage that is not an incomplete append; the open fails with STORAGE_CORRUPT. */
       readonly status: 'corrupt';
+      /** The verified records before the damage. */
       readonly records: ScanRecord[];
+      /** What is damaged: partial header, header, payload or sequence. */
       readonly kind: CorruptionKind;
+      /** Byte offset where the damage starts. */
       readonly offset: number;
+      /** Byte offset just after the last valid record. */
       readonly validEnd: number;
       /** True when the explicit operator option may remove the damaged tail (design 9.1 step 7). */
       readonly truncatable: boolean;
+      /** A human-readable description of the damage. */
       readonly reason: string;
     };
 
+/** Context passed to scanJournal for generation and epoch validation. */
 export interface ScanContext {
+  /** Journal generation number to expect in records. */
   readonly generation: number;
+  /** Transaction ID covered by the snapshot (first expected txId is snapshotTxId + 1). */
   readonly snapshotTxId: number;
   /** The epoch recorded in MANIFEST before this open bumps it. */
   readonly manifestEpoch: number;
 }
 
+/**
+ * Scans and validates a journal buffer, returning all valid records or corruption details.
+ * @param buf - Buffer containing the journal data.
+ * @param ctx - Context with generation, snapshotTxId, and manifestEpoch for validation.
+ * @returns A ScanResult describing the scan outcome.
+ */
 export function scanJournal(buf: Buffer, ctx: ScanContext): ScanResult {
   const records: ScanRecord[] = [];
   let offset = 0;

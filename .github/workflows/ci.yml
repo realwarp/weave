@@ -31,6 +31,7 @@ jobs:
       - run: npm test
       - run: npm run check:boundaries
       - run: node scripts/gen-differences.mjs --check
+      - run: npm run docs:api
       - run: npm run check:license
       - run: npm run audit
 

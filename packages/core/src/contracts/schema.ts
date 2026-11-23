@@ -9,8 +9,11 @@ export type FieldKind = 'string' | 'number' | 'boolean' | 'json' | 'set' | 'rank
  * Built with the `f.*` builders (task T1.A4).
  */
 export interface FieldSpec<out T = unknown> {
+  /** The data type of this field. */
   readonly kind: FieldKind;
+  /** Whether this field is required on record creation. */
   readonly required: boolean;
+  /** The resolver name used to resolve conflicts for this field. */
   readonly resolver: ResolverName;
   /** `rank` fields: ordered list of distinct allowed values (R6.5). */
   readonly rankMap?: readonly (string | number)[];
@@ -22,11 +25,17 @@ export interface FieldSpec<out T = unknown> {
   readonly __type?: T;
 }
 
+/**
+ * Input passed to a migration function during schema upgrade (R8.3).
+ */
 export interface MigrationInput {
   /** Deep-frozen copy of the op's fields at `fromVersion`. */
   readonly fields: Readonly<Record<string, JsonValue>>;
+  /** The collection name of the record being migrated. */
   readonly collection: string;
+  /** The record ID being migrated. */
   readonly recordId: string;
+  /** The schema version from which we are migrating. */
   readonly fromVersion: number;
 }
 
@@ -36,6 +45,9 @@ export interface MigrationInput {
  */
 export type Migration = (input: MigrationInput) => Record<string, JsonValue>;
 
+/**
+ * A collection definition specifies the structure of a collection, its fields, and migration path.
+ */
 export interface CollectionDefinition<
   F extends Record<string, FieldSpec> = Record<string, FieldSpec>,
 > {
@@ -43,6 +55,7 @@ export interface CollectionDefinition<
   readonly name: string;
   /** Current schema version, at least 1. */
   readonly version: number;
+  /** The fields of this collection. */
   readonly fields: F;
   /** Keyed by source version: `migrations[1]` upgrades version 1 to 2. */
   readonly migrations: Readonly<Record<number, Migration>>;
@@ -61,6 +74,7 @@ export type InferFields<F extends Record<string, FieldSpec>> = {
   [K in OptionalKeys<F>]?: FieldValue<F[K]>;
 };
 
+/** The record type of a collection definition: required fields required, others optional. */
 export type InferRecord<D> =
   D extends CollectionDefinition<infer F>
     ? { [K in keyof InferFields<F>]: InferFields<F>[K] }

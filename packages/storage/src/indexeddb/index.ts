@@ -11,15 +11,21 @@ import { Mutex } from '../shared/transaction.js';
 
 const STORE = 'kv';
 
+/** Options for the IndexedDB storage adapter. */
 export interface IndexedDbStorageOptions {
-  /** Database name; also the Web Lock name `weave:<name>`. */
+  /** Database name; also used as the Web Lock name `weave:<name>`. */
   readonly name: string;
-  /** Defaults to `globalThis.indexedDB`. */
+  /** Custom IndexedDB factory for testing (defaults to `globalThis.indexedDB`). */
   readonly indexedDB?: IDBFactory;
-  /** Defaults to `navigator.locks` when available; `null` disables the writer lock. */
+  /** Custom locks manager for concurrency control (defaults to `navigator.locks` when available); `null` disables the writer lock. */
   readonly locks?: LockManager | null;
 }
 
+/**
+ * Converts an IndexedDB request to a Promise.
+ * @param request - The IndexedDB request to convert.
+ * @returns A Promise that resolves with the request result or rejects with an error.
+ */
 function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
@@ -28,6 +34,12 @@ function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
   });
 }
 
+/**
+ * Opens an IndexedDB database with the required object store.
+ * @param factory - The IndexedDB factory.
+ * @param name - The database name.
+ * @returns A Promise that resolves with the opened database.
+ */
 function openDatabase(factory: IDBFactory, name: string): Promise<IDBDatabase> {
   return new Promise<IDBDatabase>((resolve, reject) => {
     const request = factory.open(name, 1);
@@ -48,11 +60,18 @@ function openDatabase(factory: IDBFactory, name: string): Promise<IDBDatabase> {
   });
 }
 
+/**
+ * Gets the default locks manager from navigator if available.
+ * @returns The LockManager instance or null if not available.
+ */
 function defaultLocks(): LockManager | null {
   const nav = (globalThis as { navigator?: { locks?: LockManager } }).navigator;
   return nav?.locks ?? null;
 }
 
+/**
+ * A storage transaction implementation for IndexedDB.
+ */
 class IdbTx implements StorageTx {
   private finished = false;
   constructor(
@@ -60,6 +79,7 @@ class IdbTx implements StorageTx {
     private readonly mode: 'ro' | 'rw',
   ) {}
 
+  /** Marks the transaction as finished. */
   finish(): void {
     this.finished = true;
   }
@@ -69,12 +89,22 @@ class IdbTx implements StorageTx {
       throw new WeaveError('STORAGE_ERROR', 'The transaction has already finished');
   }
 
+  /**
+   * Gets a value by key from the object store.
+   * @param key - The key to look up.
+   * @returns A Promise that resolves with the value as a string, or undefined if not found.
+   */
   async get(key: string): Promise<string | undefined> {
     this.alive();
     const value = (await requestToPromise(this.store.get(key))) as unknown;
     return typeof value === 'string' ? value : undefined;
   }
 
+  /**
+   * Puts a key-value pair into the object store.
+   * @param key - The key (must be a non-empty string).
+   * @param value - The value (must be a string).
+   */
   put(key: string, value: string): void {
     this.alive();
     if (this.mode === 'ro') throw new WeaveError('STORAGE_ERROR', 'put in a read-only transaction');
@@ -85,6 +115,10 @@ class IdbTx implements StorageTx {
     this.store.put(value, key);
   }
 
+  /**
+   * Deletes a key from the object store.
+   * @param key - The key to delete.
+   */
   delete(key: string): void {
     this.alive();
     if (this.mode === 'ro')
@@ -92,6 +126,12 @@ class IdbTx implements StorageTx {
     this.store.delete(key);
   }
 
+  /**
+   * Scans keys with a given prefix, optionally starting after a specific key, with a limit.
+   * @param prefix - The key prefix to scan.
+   * @param options - Scan options including after and limit.
+   * @returns A Promise that resolves with an array of [key, value] pairs.
+   */
   scan(
     prefix: string,
     options: { readonly after?: string; readonly limit?: number } = {},
@@ -119,6 +159,11 @@ class IdbTx implements StorageTx {
   }
 }
 
+/**
+ * Creates an IndexedDB storage adapter for browsers.
+ * @param options - Configuration including database name and optional IndexedDB factory/locks manager.
+ * @returns A StorageAdapter implementation using IndexedDB.
+ */
 export function indexedDbStorage(options: IndexedDbStorageOptions): StorageAdapter {
   const mutex = new Mutex();
   let db: IDBDatabase | undefined;

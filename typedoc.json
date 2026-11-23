@@ -15,10 +15,11 @@
   "excludePrivate": true,
   "excludeInternal": true,
   "treatWarningsAsErrors": false,
+  "treatValidationWarningsAsErrors": true,
   "validation": {
     "notExported": false,
     "invalidLink": true,
-    "notDocumented": false
+    "notDocumented": true
   },
   "disableSources": true
 }

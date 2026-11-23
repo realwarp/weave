@@ -12,43 +12,72 @@ import { hostname } from 'node:os';
 import path from 'node:path';
 import { WeaveError } from '@weave/core/protocol';
 
+/** Unique identifier for a host, combining hostname and system-level provenance. */
 export interface HostId {
+  /** Host name of the machine. */
   readonly hostname: string;
+  /** Kernel boot ID (Linux only, null on other platforms). */
   readonly bootId: string | null;
+  /** PID namespace identifier (Linux only, null on other platforms). */
   readonly pidNamespace: string | null;
 }
 
+/** Record written to the LOCK file to identify the directory holder. */
 export interface LockRecord {
+  /** Process ID of the holder. */
   readonly pid: number;
+  /** Host identity of the holder. */
   readonly hostId: HostId;
+  /** Unique nonce for this lock acquisition. */
   readonly nonce: string;
+  /** Timestamp (ms) when this lock was acquired. */
   readonly startedAt: number;
 }
 
+/** Record written to the LOCK.recovery guard file during lock takeover. */
 export interface GuardRecord {
+  /** Unique nonce for this recovery attempt. */
   readonly recoveryNonce: string;
+  /** The nonce of the lock being recovered (must match observed LOCK). */
   readonly observedLockNonce: string;
+  /** Process ID of the recovery process. */
   readonly pid: number;
+  /** Host identity of the recovery process. */
   readonly hostId: HostId;
 }
 
+/** Result of a liveness check for a process. */
 export type Liveness = 'alive' | 'dead' | 'unknown';
 
+/** Environment interface for lock operations (for testing and production). */
 export interface LockEnvironment {
+  /** Data directory path. */
   readonly dir: string;
+  /** Current process ID. */
   readonly pid: number;
+  /** Unique nonce for this lock attempt. */
   readonly nonce: string;
+  /** Function returning current timestamp in milliseconds. */
   readonly now: () => number;
+  /** Function returning this host's identity. */
   readonly hostId: () => Promise<HostId>;
+  /** Function checking if a process is alive. */
   readonly isAlive: (pid: number) => Liveness;
+  /** Failpoint hook for crash simulation during testing. */
   readonly failpoint: (name: string) => Promise<void>;
 }
 
+/** File name of the lock file. */
 export const LOCK_FILE = 'LOCK';
+/** File name of the recovery guard file. */
 export const GUARD_FILE = 'LOCK.recovery';
 const MAX_RESTARTS = 3;
 
-/** Reads the identity of this host. Reliable only on Linux with a readable /proc. */
+/**
+ * Reads the identity of this host from system files.
+ * @returns HostId with hostname, bootId (Linux), and pidNamespace (Linux).
+ * @remarks Reliable only on Linux with readable /proc filesystem.
+ */
 export async function defaultHostId(): Promise<HostId> {
   let bootId: string | null = null;
   let pidNamespace: string | null = null;
@@ -67,7 +96,11 @@ export async function defaultHostId(): Promise<HostId> {
   return { hostname: hostname(), bootId, pidNamespace };
 }
 
-/** `process.kill(pid, 0)`: ESRCH proves the process is gone; EPERM means it exists. */
+/**
+ * Checks if a process is alive by sending signal 0.
+ * @param pid - Process ID to check.
+ * @returns 'alive' if the process exists (EPERM), 'dead' if not found (ESRCH), 'unknown' otherwise.
+ */
 export function defaultIsAlive(pid: number): Liveness {
   try {
     process.kill(pid, 0);
@@ -80,10 +113,21 @@ export function defaultIsAlive(pid: number): Liveness {
   }
 }
 
+/**
+ * Returns true if the host ID contains all necessary fields for reliable identification.
+ * @param id - HostId to check.
+ * @returns True when hostname, bootId, and pidNamespace are all present and non-empty.
+ */
 export function isReliable(id: HostId): boolean {
   return id.hostname.length > 0 && !!id.bootId && !!id.pidNamespace;
 }
 
+/**
+ * Compares two host IDs for equality.
+ * @param a - First host ID.
+ * @param b - Second host ID.
+ * @returns True if hostname, bootId, and pidNamespace all match.
+ */
 export function sameHost(a: HostId, b: HostId): boolean {
   return a.hostname === b.hostname && a.bootId === b.bootId && a.pidNamespace === b.pidNamespace;
 }
@@ -155,7 +199,13 @@ function validLock(rec: Partial<LockRecord> | undefined): rec is LockRecord {
   );
 }
 
-/** True only when every rule of design 9.1 proves the holder dead. */
+/**
+ * Returns true when the holder is provably dead according to design 9.1 rules.
+ * @param observed - The recorded lock to check.
+ * @param own - This process's host identity.
+ * @param env - Environment for liveness and host identity checks.
+ * @returns True only when all identification fields match AND the process is confirmed dead.
+ */
 function provablyDead(observed: LockRecord, own: HostId, env: LockEnvironment): boolean {
   if (!isReliable(own) || !isReliable(observed.hostId)) return false;
   if (!sameHost(own, observed.hostId)) return false;
@@ -164,7 +214,8 @@ function provablyDead(observed: LockRecord, own: HostId, env: LockEnvironment): 
 
 /**
  * Acquires the directory lock following the guarded open procedure of design 9.1.
- * Resolves when this process owns `LOCK`; otherwise throws STORAGE_LOCKED.
+ * @param env - Environment with directory, identity, and failpoint hooks.
+ * @throws STORAGE_LOCKED if the lock cannot be acquired or proven stale.
  */
 export async function acquireLock(env: LockEnvironment): Promise<void> {
   const lockPath = path.join(env.dir, LOCK_FILE);
@@ -238,7 +289,12 @@ export async function acquireLock(env: LockEnvironment): Promise<void> {
   throw locked('The lock kept changing during recovery');
 }
 
-/** Before every write: this process must still own LOCK (otherwise STORAGE_LOCK_LOST). */
+/**
+ * Verifies this process still owns the directory lock before every write.
+ * @param dir - Data directory path.
+ * @param nonce - Nonce that was recorded when the lock was acquired.
+ * @throws STORAGE_LOCK_LOST if the nonce does not match or the file is absent.
+ */
 export async function assertOwnership(dir: string, nonce: string): Promise<void> {
   const rec = await readJson<Partial<LockRecord>>(path.join(dir, LOCK_FILE));
   if (rec === undefined || rec.nonce !== nonce) {
@@ -249,6 +305,11 @@ export async function assertOwnership(dir: string, nonce: string): Promise<void>
   }
 }
 
+/**
+ * Releases the directory lock if this process still owns it.
+ * @param dir - Data directory path.
+ * @param nonce - Nonce that was recorded when the lock was acquired.
+ */
 export async function releaseLock(dir: string, nonce: string): Promise<void> {
   await removeIfOwned(path.join(dir, LOCK_FILE), 'nonce', nonce);
 }

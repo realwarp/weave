@@ -5,6 +5,7 @@
 
 /** Source of randomness. `randomBytes` is the only primitive; see `randomFloat` for floats. */
 export interface Random {
+  /** Generate random bytes of the specified length. */
   randomBytes(length: number): Uint8Array;
 }
 
@@ -18,5 +19,6 @@ export interface Clock {
 export interface Scheduler {
   /** Monotonic milliseconds from an arbitrary origin. */
   monotonicMs(): number;
+  /** Sleep for the specified number of milliseconds. */
   sleep(ms: number): Promise<void>;
 }

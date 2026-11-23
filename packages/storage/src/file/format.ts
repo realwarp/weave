@@ -11,11 +11,16 @@
  */
 import { createHash } from 'node:crypto';
 
+/** Magic bytes identifying a valid journal record (WJ02). */
 export const MAGIC = Buffer.from('WJ02', 'ascii');
+/** Number of bytes in a journal record header (32). */
 export const HEADER_BYTES = 32;
+/** Number of bytes in a journal record trailer (32). */
 export const TRAILER_BYTES = 32;
+/** Maximum allowed payload size in bytes (64 MiB). */
 export const MAX_PAYLOAD_BYTES = 64 * 1024 * 1024;
 
+/** A write set is an immutable sequence of key-value pairs. */
 export type WriteSet = ReadonlyArray<readonly [string, string | null]>;
 
 function sha256(...parts: Buffer[]): Buffer {
@@ -24,13 +29,24 @@ function sha256(...parts: Buffer[]): Buffer {
   return h.digest();
 }
 
+/** Header fields of a journal record. */
 export interface RecordHeader {
+  /** Journal generation number. */
   readonly generation: number;
+  /** Transaction epoch (monotonically increases on restarts). */
   readonly epoch: number;
+  /** Transaction ID (monotonically increases within a generation). */
   readonly txId: number;
+  /** Size of the payload in bytes. */
   readonly payloadLen: number;
 }
 
+/**
+ * Encodes a journal record with header, payload, and trailer.
+ * @param header - Record header fields (excluding payloadLen which is computed).
+ * @param writes - Write set to include as payload.
+ * @returns The complete encoded record buffer.
+ */
 export function encodeRecord(header: Omit<RecordHeader, 'payloadLen'>, writes: WriteSet): Buffer {
   const payload = Buffer.from(JSON.stringify(writes), 'utf8');
   const head = Buffer.alloc(HEADER_BYTES);
@@ -44,7 +60,12 @@ export function encodeRecord(header: Omit<RecordHeader, 'payloadLen'>, writes: W
   return Buffer.concat([head, payload, trailer]);
 }
 
-/** Verifies magic and header check. Returns undefined when the header does not verify. */
+/**
+ * Decodes and verifies a journal record header.
+ * @param buf - Buffer containing the record.
+ * @param offset - Byte offset to the start of the header.
+ * @returns The header fields if the magic and header check verify; undefined otherwise.
+ */
 export function decodeHeader(buf: Buffer, offset: number): RecordHeader | undefined {
   const head = buf.subarray(offset, offset + HEADER_BYTES);
   if (head.length < HEADER_BYTES) return undefined;
@@ -61,12 +82,24 @@ export function decodeHeader(buf: Buffer, offset: number): RecordHeader | undefi
   };
 }
 
+/**
+ * Verifies the trailer checksum of a journal record.
+ * @param buf - Buffer containing the record.
+ * @param offset - Byte offset to the start of the record header.
+ * @param payloadLen - Expected payload length from the decoded header.
+ * @returns True if the trailer matches the expected checksum.
+ */
 export function trailerMatches(buf: Buffer, offset: number, payloadLen: number): boolean {
   const end = offset + HEADER_BYTES + payloadLen;
   const expected = sha256(buf.subarray(offset, end));
   return expected.equals(buf.subarray(end, end + TRAILER_BYTES));
 }
 
+/**
+ * Parses and validates a write set from bytes.
+ * @param bytes - Buffer containing the JSON-encoded write set.
+ * @returns The parsed write set if valid; undefined if parsing or validation fails.
+ */
 export function parseWriteSet(bytes: Buffer): WriteSet | undefined {
   let parsed: unknown;
   try {
@@ -83,6 +116,12 @@ export function parseWriteSet(bytes: Buffer): WriteSet | undefined {
   return parsed as WriteSet;
 }
 
+/**
+ * Computes a SHA-256 checksum over a snapshot's transaction ID and entries.
+ * @param txId - Transaction ID of the snapshot.
+ * @param entries - Key-value entries in the snapshot.
+ * @returns Hex string of the checksum.
+ */
 export function snapshotChecksum(
   txId: number,
   entries: ReadonlyArray<readonly [string, string]>,

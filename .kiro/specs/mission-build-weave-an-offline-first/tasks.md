@@ -451,7 +451,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Depends: Gate 2, T1.G1. Req: R18.3, R9.6(f).
   - Done when: `storage-recovery.md` holds the six-step manual recovery procedure (stop all, confirm no holder, back up, inspect, keep or create the guard and remove stale files and `LOCK` while it remains, remove the guard last, reopen and validate) and the corruption guidance; the T1.C3 script executes the guide's steps and passes.
 
-- [ ] **T4.3 API docs and READMEs [MVP]**
+- [x] **T4.3 API docs and READMEs [MVP]**
   - Owner: Developer experience and documentation.
   - Paths: `README.md`, `CHANGELOG.md`, `typedoc.json`, `docs/api/**`.
   - Depends: T1.A9, T1.G1, Gate 3. Req: R11.3, R11.4, R18.1, R18.2.

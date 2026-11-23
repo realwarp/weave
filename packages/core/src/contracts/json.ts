@@ -11,7 +11,9 @@ export type ReplicaId = string;
 
 /** The identity of one operation: `(replicaId, seq)` (D1). */
 export interface OpId {
+  /** The replica that created this operation. */
   readonly replicaId: ReplicaId;
+  /** Sequential number assigned by the replica, starting at 1. */
   readonly seq: number;
 }
 

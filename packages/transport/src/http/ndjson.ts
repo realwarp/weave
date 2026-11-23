@@ -1,7 +1,7 @@
 /**
- * NDJSON wire helpers for the relay HTTP API (design 10.1). Line 1 is a JSON header; every
- * following line is one canonical op line (canonical JSON contains no raw newline). Shared by the
- * HTTP client and the relay server.
+ * NDJSON wire helpers for the relay HTTP API (design 10.1).
+ * Line 1 is a JSON header; every following line is one canonical op line.
+ * Shared by the HTTP client and the relay server.
  */
 import {
   WeaveError,
@@ -42,11 +42,21 @@ function join(header: unknown, ops: readonly string[]): string {
   return [JSON.stringify(header), ...ops].join('\n') + '\n';
 }
 
+/**
+ * Encodes a pull response as NDJSON text.
+ * @param response - The pull response to encode.
+ * @returns The NDJSON-encoded pull response.
+ */
 export function encodePullResponse(response: PullResponse): string {
   const { ops, ...header } = response;
   return join(header, ops);
 }
 
+/**
+ * Decodes a pull response from NDJSON text.
+ * @param text - The NDJSON-encoded pull response.
+ * @returns The parsed PullResponse object.
+ */
 export function decodePullResponse(text: string): PullResponse {
   const { header, ops } = splitLines(text);
   const h = header as Record<string, unknown>;
@@ -65,11 +75,21 @@ export function decodePullResponse(text: string): PullResponse {
   };
 }
 
+/**
+ * Encodes a push request as NDJSON text.
+ * @param request - The push request to encode.
+ * @returns The NDJSON-encoded push request.
+ */
 export function encodePushRequest(request: PushRequest): string {
   const { ops, ...header } = request;
   return join(header, ops);
 }
 
+/**
+ * Decodes a push request from NDJSON text.
+ * @param text - The NDJSON-encoded push request.
+ * @returns The parsed PushRequest object.
+ */
 export function decodePushRequest(text: string): PushRequest {
   const { header, ops } = splitLines(text);
   const h = header as Record<string, unknown>;

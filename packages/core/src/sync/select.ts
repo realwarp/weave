@@ -1,20 +1,31 @@
 /**
- * Schema-aware prefix selection (R4.10, design 8.3). Used by every sender (replica endpoint,
- * sync push loop and relay pull). For each origin it emits ops in ascending `seq` until the first
- * op the receiver cannot read; that origin is then BLOCKED and later ops are never skipped to,
- * even when they belong to a supported collection. Other origins are unaffected.
+ * Schema-aware prefix selection (R4.10, design 8.3).
+ * Used by every sender (replica endpoint, sync push loop and relay pull).
+ * For each origin it emits ops in ascending `seq` until the first op the receiver cannot read;
+ * that origin is then BLOCKED and later ops are never skipped to, even when they belong to a
+ * supported collection. Other origins are unaffected.
  */
 import type { ReplicaId, VersionVector } from '../contracts/json.js';
 import type { BlockedOrigin, Support } from '../contracts/sync.js';
 
+/** An envelope containing an op with its metadata for selection. */
 export interface OpEnvelope {
+  /** The sequence number of this op. */
   readonly seq: number;
+  /** The collection name. */
   readonly collection: string;
+  /** The schema version at which this op was written. */
   readonly schemaVersion: number;
+  /** The canonical JSON line of the op. */
   readonly line: string;
 }
 
-/** The receiver can read the op: collection supported at this version or newer. */
+/**
+ * Checks if the receiver can read an op based on collection support.
+ * @param envelope - The op envelope to check.
+ * @param support - The support mapping or '*' for all.
+ * @returns True if the collection is supported at this version or newer.
+ */
 export function isSupported(
   envelope: Pick<OpEnvelope, 'collection' | 'schemaVersion'>,
   support: Support | '*',
@@ -31,31 +42,45 @@ export type ReadOrigin = (
   limit: number,
 ) => Promise<readonly OpEnvelope[]>;
 
+/** Input for the selectReadablePrefix function. */
 export interface SelectInput {
   /** Origins the sender holds beyond the peer, with the sender's vector. */
   readonly senderVector: VersionVector;
   /** What the receiver already holds (its accepted or durable vector). */
   readonly peerVector: VersionVector;
+  /** What collections and versions the receiver supports. */
   readonly support: Support | '*';
   /** Maximum number of ops to emit. `0` emits nothing and only reports `more` and `blocked`. */
   readonly limit: number;
+  /** Optional filter to select only specific origins. */
   readonly origins?: readonly ReplicaId[];
+  /** The sync direction: 'pull' from relay, 'push' to relay. */
   readonly direction: 'pull' | 'push';
+  /** Function to read ops from an origin. */
   readonly read: ReadOrigin;
 }
 
+/** Output of the selectReadablePrefix function. */
 export interface SelectOutput {
   /** Op lines grouped by origin (sorted origins), ascending `seq` within an origin. */
   readonly lines: string[];
-  readonly perOrigin: ReadonlyArray<{ readonly origin: ReplicaId; readonly lines: string[] }>;
+  /** Op lines grouped by origin. */
+  readonly perOrigin: ReadonlyArray<{
+    /** The origin replica. */
+    readonly origin: ReplicaId;
+    /** That origin's selected op lines, ascending seq. */
+    readonly lines: string[];
+  }>;
+  /** Origins stopped at their first op the receiver cannot read (schema too new). */
   readonly blocked: BlockedOrigin[];
-  /** True when the receiver could still be sent more readable ops. */
+  /** True when the receiver could still be sent more readable ops (budget was exhausted). */
   readonly more: boolean;
 }
 
 /**
  * Selects the readable prefix of every origin that the sender holds beyond the peer.
- * `origins` restricts selection; origins are processed in sorted order.
+ * @param input - The select input configuration.
+ * @returns A Promise that resolves with the selected ops grouped by origin.
  */
 export async function selectReadablePrefix(input: SelectInput): Promise<SelectOutput> {
   const filter = input.origins === undefined ? undefined : new Set(input.origins);
@@ -104,8 +129,12 @@ export async function selectReadablePrefix(input: SelectInput): Promise<SelectOu
 }
 
 /**
- * Pure variant for already-loaded envelopes (used by tests and small in-memory endpoints).
+ * Pure variant of selectReadablePrefix for already-loaded envelopes (used by tests and small in-memory endpoints).
  * `opsByOrigin[o]` must hold the sender's ops of origin `o` in ascending `seq`.
+ * @param opsByOrigin - Ops grouped by origin, each array sorted by seq ascending.
+ * @param input - Select input excluding the read function and senderVector.
+ * @returns A Promise that resolves with the selected ops.
+ * @internal The read function filters ops after afterSeq and slices to limit.
  */
 export function selectFromLoaded(
   opsByOrigin: Readonly<Record<ReplicaId, readonly OpEnvelope[]>>,
