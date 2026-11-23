@@ -118,3 +118,37 @@ export function arbFrontierEntries<V extends JsonValue>(
     )
     .map((list) => list.map((e) => ({ ...e, opId: { replicaId: e.replicaId, seq: e.seq } })));
 }
+
+/**
+ * Splits a fixed list of op lines into a random delivery: a random order, random duplicates and
+ * random batch boundaries. Use it with lines from the simulator for order-independence properties.
+ */
+export function arbBatches(
+  lines: readonly string[],
+  options: { duplicates?: boolean; maxBatches?: number } = {},
+): fc.Arbitrary<string[][]> {
+  if (lines.length === 0) return fc.constant([]);
+  const extra =
+    options.duplicates === true
+      ? fc.array(fc.constantFrom(...lines), { maxLength: lines.length })
+      : fc.constant([]);
+  return fc
+    .tuple(
+      fc.shuffledSubarray([...lines], { minLength: lines.length, maxLength: lines.length }),
+      extra,
+    )
+    .chain(([order, copies]) => {
+      const all = [...order, ...copies];
+      return fc
+        .uniqueArray(fc.integer({ min: 1, max: Math.max(1, all.length - 1) }), {
+          maxLength: Math.min(all.length - 1, (options.maxBatches ?? 8) - 1),
+        })
+        .map((cuts) => {
+          const bounds = [0, ...[...cuts].sort((a, b) => a - b), all.length];
+          const batches: string[][] = [];
+          for (let i = 0; i + 1 < bounds.length; i++)
+            batches.push(all.slice(bounds[i], bounds[i + 1]));
+          return batches.filter((b) => b.length > 0);
+        });
+    });
+}

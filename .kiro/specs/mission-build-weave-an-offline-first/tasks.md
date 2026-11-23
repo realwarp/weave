@@ -293,7 +293,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 ### Lane F: testing tools (Testing and QA owner)
 
-- [ ] **T1.F1 Seeded random, simulator, generators [MVP]**
+- [x] **T1.F1 Seeded random, simulator, generators [MVP]**
   - Owner: Testing and QA.
   - Paths: `packages/testing/src/simulator/**`, `packages/testing/src/generators/**`, `packages/testing/src/faults/**`, `packages/testing/src/index.ts`, `packages/testing/test/**`.
   - Depends: T0.3. Req: R15.2, R15.21, design 12.2.
