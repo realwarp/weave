@@ -13,3 +13,4 @@ Thumbs.db
 # NOTE: .kiro/ is intentionally NOT ignored (hackathon requirement R19.2).
 docs/api/
 tests/quickstart/.generated/
+coverage/

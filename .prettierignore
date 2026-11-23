@@ -6,3 +6,4 @@ package-lock.json
 .kiro
 docs/api
 tests/quickstart/.generated/
+coverage/

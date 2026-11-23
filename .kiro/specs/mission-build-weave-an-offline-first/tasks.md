@@ -325,7 +325,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 ## Phase 2: integration and hardening (Gate 2)
 
-- [ ] **T2.1 Core and state full test pass [MVP]**
+- [x] **T2.1 Core and state full test pass [MVP]**
   - Owner: Core engine (tests under `packages/core/test/engine/**`) and Conflict resolution (tests under `packages/core/test/state/**` and `packages/core/test/resolvers/**`); each fixes its own defects.
   - Paths: `packages/core/test/engine/**`, `packages/core/test/state/**`, `packages/core/test/resolvers/**`.
   - Depends: Gate 1. Req: R15.1 to R15.4, R15.8.
