@@ -315,7 +315,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Depends: T0.3. Req: R11.2, R18.1 to R18.3.
   - Done when: the quick start (under 30 lines, using `replica.newMutationId()` or a fixed `mutationId`) is written and is run as a test by T1.G2.
 
-- [ ] **T1.G2 Quick-start test and Gate 1 review [MVP]**
+- [x] **T1.G2 Quick-start test and Gate 1 review [MVP]**
   - Owner: Testing and QA.
   - Paths: `tests/quickstart/**`, `docs/reviews/T1.G2.md`.
   - Depends: T1.A5, T1.A6, T1.A9, T1.D3, T1.D4, T1.C1, T1.G1. Req: R11.2, design 18.3 Gate 1.
