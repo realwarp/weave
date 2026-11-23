@@ -391,7 +391,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 ### GHOSTLINE (GHOSTLINE owner)
 
-- [ ] **T3.G1 GHOSTLINE model and logic [MVP]**
+- [x] **T3.G1 GHOSTLINE model and logic [MVP]**
   - Owner: GHOSTLINE.
   - Paths: `apps/ghostline/src/model.ts`, `apps/ghostline/src/logic.ts`, `apps/ghostline/test/logic*.test.ts`.
   - Depends: Gate 1. Req: R13.1 to R13.5, design 13.1.
