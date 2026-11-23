@@ -361,7 +361,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Depends: T1.D3, T1.C1. Req: R20.5, design 12.4.
   - Done when: 10,000 ops over 500 records apply in under 5 s and a 1,000-op difference syncs in under 2 s on the in-process transport; CI fails only past 3 times the target.
 
-- [ ] **T2.7 Threat model and security documentation [MVP]**
+- [x] **T2.7 Threat model and security documentation [MVP]**
   - Owner: Security and release.
   - Paths: `docs/threat-model.md`.
   - Depends: T2.3. Req: R16.1 to R16.6, design 11.
