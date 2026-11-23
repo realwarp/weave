@@ -349,7 +349,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Depends: T1.A4, T1.A6, T2.3. Req: R8.6, R14.5, R15.12.
   - Done when: v1 replicas upgrade to v2, derive equal state hashes, sync through the relay and converge; a v1-only replica receives only the readable prefix, reports `partial` / `PEER_SCHEMA_OLDER`, and converges after upgrade.
 
-- [ ] **T2.5 Notification and crash windows [MVP]**
+- [x] **T2.5 Notification and crash windows [MVP]**
   - Owner: Core engine.
   - Paths: `packages/core/test/engine/crash*.test.ts`.
   - Depends: T1.A8, T1.C1. Req: R15.13, R5.5.
