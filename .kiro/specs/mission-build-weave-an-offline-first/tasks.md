@@ -343,7 +343,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Depends: T1.D5, T1.E2, T1.F1. Req: R4a.10, R15.1, R15.4, R15.11, R15.16, R15.18.
   - Done when: a real `weave-relay` process with the HTTP transport passes: three-replica convergence; kill -9 and restart losing nothing acknowledged; the relay concurrency test (identical hashes stored and acknowledged once, different hashes keep the first and fail the second with `INTEGRITY_CONFLICT`); schema-aware delivery through the relay (R15.11); push and pull isolation; token and limit tests; acknowledgement cases across restart.
 
-- [ ] **T2.4 Schema-evolution scenario [MVP]**
+- [x] **T2.4 Schema-evolution scenario [MVP]**
   - Owner: Testing and QA, with defects fixed by Core engine in `packages/core/src/schema/**` and `packages/core/src/engine/**`.
   - Paths: `tests/schema-evolution/**`.
   - Depends: T1.A4, T1.A6, T2.3. Req: R8.6, R14.5, R15.12.

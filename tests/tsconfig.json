@@ -22,5 +22,14 @@
       "@weave/testing": ["../packages/testing/src/index.ts"]
     }
   },
-  "include": ["property", "integration", "quickstart", "boundaries", "canonical-reference/*.ts"]
+  "include": [
+    "property",
+    "integration",
+    "quickstart",
+    "boundaries",
+    "relay",
+    "schema-evolution",
+    "fuzz",
+    "canonical-reference/*.ts"
+  ]
 }
