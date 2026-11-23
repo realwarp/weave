@@ -355,7 +355,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Depends: T1.A8, T1.C1. Req: R15.13, R5.5.
   - Done when: all crash-window tests pass (before marking, after marking before emit, superseded-in-one-batch, restart repeated).
 
-- [ ] **T2.6 Performance [MVP]**
+- [x] **T2.6 Performance [MVP]**
   - Owner: Security and release.
   - Paths: `scripts/bench.mjs`.
   - Depends: T1.D3, T1.C1. Req: R20.5, design 12.4.
