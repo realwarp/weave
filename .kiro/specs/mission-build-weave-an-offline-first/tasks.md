@@ -379,7 +379,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Depends: T1.A1, T1.C4. Req: R15.10, R9.3.
   - Done when: Playwright in Chromium runs the canonical vectors with bytes and hashes identical to Node, and the IndexedDB adapter passes the storage conformance suite.
 
-- [ ] **T2.9 Independent review of lanes A to F [MVP], review-only**
+- [x] **T2.9 Independent review of lanes A to F [MVP], review-only**
   - Owner: independent reviewer agents (Testing and QA), one per lane.
   - Paths (read): `packages/core/**`, `packages/storage/**`, `packages/transport/**`, `packages/relay/**`, `packages/testing/**`, `tests/**`; (write): `docs/reviews/T2.9-<lane>.md`.
   - Depends: T2.1 to T2.8, T2.10. Req: R15.7, design 18.3 Gate 2.
