@@ -106,7 +106,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Depends: T0.3. Req: R17.1 to R17.4, design 16.
   - Done when: ADR-0001 holds the comparison of state and operation CRDTs, event sourcing, timestamp LWW, server-authoritative sync and peer-to-peer versus relay, and states what WEAVE adopts and does not adopt; the component diagram and protocol sketch exist.
 
-- [ ] **T0.8 Gate 0 review [MVP], review-only**
+- [x] **T0.8 Gate 0 review [MVP], review-only**
   - Owner: independent reviewer agent (Testing and QA).
   - Paths (read): everything produced by T0.1 to T0.7; (write): `docs/reviews/T0.8.md` (Testing and QA owns `docs/reviews/**`).
   - Depends: T0.1 to T0.7. Req: design 18.3.
