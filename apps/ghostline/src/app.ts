@@ -21,7 +21,7 @@ import {
   type Session,
 } from './logic.js';
 import { collections } from './model.js';
-import { localPending } from './pending.js';
+import { formIntent, localPending } from './pending.js';
 
 const params = new URLSearchParams(location.search);
 const device =
@@ -141,13 +141,15 @@ async function draw(): Promise<void> {
   for (const n of list) noticeList.append(el('li', n.message, `notice ${n.open ? 'open' : ''}`));
 }
 
+const annIntent = formIntent(device, localStorage, 'announcement');
+const reqIntent = formIntent(device, localStorage, 'request');
+
 $('ann-form').addEventListener('submit', (event) => {
   event.preventDefault();
   const form = event.target as HTMLFormElement;
   const data = new FormData(form);
-  // One intent per submission; the key is kept on the form until the write is recorded.
-  form.dataset['intent'] ??= crypto.randomUUID();
-  const intent = form.dataset['intent'];
+  // One intent per submission, kept in localStorage until the write is recorded (survives reloads).
+  const intent = annIntent.get();
   void act(async () => {
     await draftAnnouncement(
       session,
@@ -155,7 +157,7 @@ $('ann-form').addEventListener('submit', (event) => {
       String(data.get('title')),
       String(data.get('body') ?? ''),
     );
-    delete form.dataset['intent'];
+    annIntent.done();
     form.reset();
   });
 });
@@ -164,8 +166,7 @@ $('req-form').addEventListener('submit', (event) => {
   event.preventDefault();
   const form = event.target as HTMLFormElement;
   const data = new FormData(form);
-  form.dataset['intent'] ??= crypto.randomUUID();
-  const intent = form.dataset['intent'];
+  const intent = reqIntent.get();
   const tags = String(data.get('tags') ?? '')
     .split(',')
     .map((t) => t.trim())
@@ -178,7 +179,7 @@ $('req-form').addEventListener('submit', (event) => {
       String(data.get('details') ?? ''),
       tags,
     );
-    delete form.dataset['intent'];
+    reqIntent.done();
     form.reset();
   });
 });

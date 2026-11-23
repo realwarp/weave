@@ -21,7 +21,7 @@ import {
   type Status,
 } from './logic.js';
 import { STATUS, collectionsV1, collectionsV2 } from './model.js';
-import { localPending } from './pending.js';
+import { formIntent, localPending } from './pending.js';
 
 const params = new URLSearchParams(location.search);
 const device =
@@ -134,8 +134,8 @@ async function renderDetail(): Promise<void> {
   form.append(note, severity, reading, submit);
   form.addEventListener('submit', (event) => {
     event.preventDefault();
-    form.dataset['intent'] ??= crypto.randomUUID();
-    const intent = form.dataset['intent'];
+    const obsIntent = formIntent(device, localStorage, `observation:${row.id}`);
+    const intent = obsIntent.get();
     const value = {
       note: note.value,
       severity: Number(severity.value),
@@ -143,7 +143,7 @@ async function renderDetail(): Promise<void> {
     };
     void act(async () => {
       await addObservation(session, intent, row.id, value);
-      delete form.dataset['intent'];
+      obsIntent.done();
     });
   });
   box.append(form);
@@ -220,12 +220,14 @@ async function draw(): Promise<void> {
   }
 }
 
+const inspIntent = formIntent(device, localStorage, 'inspection');
+
 $('insp-form').addEventListener('submit', (event) => {
   event.preventDefault();
   const form = event.target as HTMLFormElement;
   const data = new FormData(form);
-  form.dataset['intent'] ??= crypto.randomUUID();
-  const intent = form.dataset['intent'];
+  // Kept in localStorage until the write is recorded, so a re-submit after a reload is a replay.
+  const intent = inspIntent.get();
   const title = String(data.get('title'));
   const site = String(data.get('site') ?? '').trim();
   const zone = String(data.get('zone') ?? '').trim();
@@ -235,7 +237,7 @@ $('insp-form').addEventListener('submit', (event) => {
       : { title, ...(site ? { site } : {}), ...(zone ? { zone } : {}) };
   void act(async () => {
     selected = (await createInspection(session, intent, input, [device])).recordId;
-    delete form.dataset['intent'];
+    inspIntent.done();
     form.reset();
   });
 });

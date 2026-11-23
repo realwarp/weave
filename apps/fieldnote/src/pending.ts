@@ -36,6 +36,27 @@ export function localPending(device: string, storage: Storage): PendingStore {
   };
 }
 
+/**
+ * The intent key of a form submission, kept in `storage` until the write is recorded, so a
+ * re-submit after a reload or crash names the same intent and so reuses the same mutationId.
+ */
+export function formIntent(device: string, storage: Storage, form: string) {
+  const key = `fieldnote:${device}:intent:${form}`;
+  return {
+    get(): string {
+      let intent = storage.getItem(key);
+      if (intent === null) {
+        intent = crypto.randomUUID();
+        storage.setItem(key, intent);
+      }
+      return intent;
+    },
+    done(): void {
+      storage.removeItem(key);
+    },
+  };
+}
+
 export async function runAction(
   replica: Replica,
   pending: PendingStore,

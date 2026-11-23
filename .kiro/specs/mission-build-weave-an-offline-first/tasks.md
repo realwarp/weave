@@ -429,7 +429,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Depends: T3.G1, T3.F1, T0.5. Req: R14a.1, R14a.3.
   - Done when: `check-boundaries` passes on both apps; `gen-differences` prints the differences table from each app's `model.ts` resolver declarations and `docs/app-differences.md` equals its output (CI compares them); each row maps to a demo step output; the check fails on a fixture app that imports internals or contains sync or hashing identifiers.
 
-- [ ] **T3.X2 Independent review of both apps [MVP], review-only**
+- [x] **T3.X2 Independent review of both apps [MVP], review-only**
   - Owner: independent reviewer agents (Testing and QA).
   - Paths (read): `apps/ghostline/**`, `apps/fieldnote/**`, `docs/app-differences.md`; (write): `docs/reviews/T3.X2.md`.
   - Depends: T3.G2, T3.F2, T3.X1, Gate 2. Req: R13, R14, R14a, design 18.3 Gate 3.
