@@ -407,7 +407,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 ### FIELDNOTE (FIELDNOTE owner)
 
-- [ ] **T3.F1 FIELDNOTE model, migration, logic [MVP]**
+- [x] **T3.F1 FIELDNOTE model, migration, logic [MVP]**
   - Owner: FIELDNOTE.
   - Paths: `apps/fieldnote/src/model.ts`, `apps/fieldnote/src/logic.ts`, `apps/fieldnote/test/logic*.test.ts`.
   - Depends: Gate 1. Req: R14.1 to R14.6, design 13.2.
