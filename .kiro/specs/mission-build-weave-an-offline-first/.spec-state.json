@@ -1,0 +1,469 @@
+{
+  "decisions": [
+    {
+      "id": "license",
+      "title": "Which open-source license?",
+      "options": [
+        "MIT",
+        "Apache-2.0"
+      ],
+      "recommended": "MIT",
+      "answer": "MIT"
+    },
+    {
+      "id": "durable-store",
+      "title": "Durable storage adapter for Node and browser?",
+      "options": [
+        "SQLite (WASM in browser)",
+        "IndexedDB (browser) plus a Node file store"
+      ],
+      "recommended": "IndexedDB (browser) plus a Node file store",
+      "answer": "IndexedDB (browser) plus a Node file store"
+    },
+    {
+      "id": "max-rank",
+      "title": "How should FIELDNOTE status resolve?",
+      "options": [
+        "Add max-rank as an MVP built-in resolver with a rank map",
+        "Use only resolvers already defined"
+      ],
+      "recommended": "Add max-rank as an MVP built-in resolver with a rank map",
+      "answer": "Add max-rank as an MVP built-in resolver with a rank map"
+    },
+    {
+      "id": "schema-mvp",
+      "title": "MVP schema-evolution scenario?",
+      "options": [
+        "Upgrade v1 to v2, then sync upgraded replicas; mixed-version writing is advanced",
+        "Full mixed-version operation in MVP"
+      ],
+      "recommended": "Upgrade v1 to v2, then sync upgraded replicas; mixed-version writing is advanced",
+      "answer": "Upgrade v1 to v2, then sync upgraded replicas; mixed-version writing is advanced"
+    },
+    {
+      "id": "restore",
+      "title": "Restore operation?",
+      "options": [
+        "Define restore as an advanced op kind with deterministic semantics; MVP rejects it with NOT_SUPPORTED",
+        "Remove restore"
+      ],
+      "recommended": "Define restore as an advanced op kind with deterministic semantics; MVP rejects it with NOT_SUPPORTED",
+      "answer": "Define restore as an advanced op kind with deterministic semantics; MVP rejects it with NOT_SUPPORTED"
+    },
+    {
+      "id": "relay-mvp",
+      "title": "Relay server scope?",
+      "options": [
+        "Relay is its own package in the MVP",
+        "HTTP adapter only"
+      ],
+      "recommended": "Relay is its own package in the MVP",
+      "answer": "Relay is its own package in the MVP"
+    },
+    {
+      "id": "state-derivation",
+      "title": "How is record state derived?",
+      "options": [
+        "Recompute each touched record from its full op set",
+        "Incremental frontier maintenance"
+      ],
+      "recommended": "Recompute each touched record from its full op set",
+      "answer": "Recompute each touched record from its full op set"
+    },
+    {
+      "id": "package-manager",
+      "title": "Package manager and apps framework?",
+      "options": [
+        "npm workspaces, Vite with vanilla TypeScript, zero runtime dependencies",
+        "pnpm workspaces with a UI framework"
+      ],
+      "recommended": "npm workspaces, Vite with vanilla TypeScript, zero runtime dependencies",
+      "answer": "npm workspaces, Vite with vanilla TypeScript, zero runtime dependencies"
+    },
+    {
+      "id": "write-idempotency",
+      "title": "How is a retried write made safe after a crash?",
+      "options": [
+        "Caller-reusable mutationId persisted with its op in the same transaction; identical retry returns the original result; reuse with a different payload fails with MUTATION_ID_REUSED",
+        "No idempotency key"
+      ],
+      "recommended": "Caller-reusable mutationId persisted with its op in the same transaction; identical retry returns the original result; reuse with a different payload fails with MUTATION_ID_REUSED",
+      "answer": "Caller-reusable mutationId persisted with its op in the same transaction; identical retry returns the original result; reuse with a different payload fails with MUTATION_ID_REUSED"
+    },
+    {
+      "id": "batch-validation",
+      "title": "How are invalid received batches handled?",
+      "options": [
+        "Reject the whole batch with no change to log, state, vector or buffer; keep only the SCHEMA_TOO_NEW prefix rule and the sequence-gap buffer as partial outcomes; isolate bad origins by per-origin retry",
+        "Stop only the offending origin"
+      ],
+      "recommended": "Reject the whole batch with no change to log, state, vector or buffer; keep only the SCHEMA_TOO_NEW prefix rule and the sequence-gap buffer as partial outcomes; isolate bad origins by per-origin retry",
+      "answer": "Reject the whole batch with no change to log, state, vector or buffer; keep only the SCHEMA_TOO_NEW prefix rule and the sequence-gap buffer as partial outcomes; isolate bad origins by per-origin retry"
+    },
+    {
+      "id": "ack-semantics",
+      "title": "What does a relay acknowledgement vector mean?",
+      "options": [
+        "Raised only by the member's AckRequest after it committed, or by the validated contiguous prefix it pushed; never by a pull; the relay's own durable vector is separate",
+        "Raised by any exchange"
+      ],
+      "recommended": "Raised only by the member's AckRequest after it committed, or by the validated contiguous prefix it pushed; never by a pull; the relay's own durable vector is separate",
+      "answer": "Raised only by the member's AckRequest after it committed, or by the validated contiguous prefix it pushed; never by a pull; the relay's own durable vector is separate"
+    },
+    {
+      "id": "file-adapter",
+      "title": "File adapter crash safety?",
+      "options": [
+        "Journal record checksum over the whole record, manifest-committed generations with a transaction watermark, stale-lock recovery with a nonce check on every write",
+        "Simple append log"
+      ],
+      "recommended": "Journal record checksum over the whole record, manifest-committed generations with a transaction watermark, stale-lock recovery with a nonce check on every write",
+      "answer": "Journal record checksum over the whole record, manifest-committed generations with a transaction watermark, stale-lock recovery with a nonce check on every write"
+    },
+    {
+      "id": "sync-complete",
+      "title": "When may sync report complete?",
+      "options": [
+        "Only after a verification pull shows the endpoint's durable vector equals the replica's freshly read vector, with nothing blocked; otherwise repeat up to maxRounds, then partial NOT_SETTLED",
+        "After the last batch"
+      ],
+      "recommended": "Only after a verification pull shows the endpoint's durable vector equals the replica's freshly read vector, with nothing blocked; otherwise repeat up to maxRounds, then partial NOT_SETTLED",
+      "answer": "Only after a verification pull shows the endpoint's durable vector equals the replica's freshly read vector, with nothing blocked; otherwise repeat up to maxRounds, then partial NOT_SETTLED"
+    },
+    {
+      "id": "ownership",
+      "title": "File ownership across workstreams?",
+      "options": [
+        "Exact non-overlapping path table in design.md 18.2, mirrored in OWNERS",
+        "Directory-level ownership"
+      ],
+      "recommended": "Exact non-overlapping path table in design.md 18.2, mirrored in OWNERS",
+      "answer": "Exact non-overlapping path table in design.md 18.2, mirrored in OWNERS"
+    },
+    {
+      "id": "mutation-id-mandatory",
+      "title": "Is mutationId optional?",
+      "options": [
+        "Mandatory on every create, update and delete, in the type and at runtime; the engine never invents one",
+        "Optional with an engine-generated fallback"
+      ],
+      "recommended": "Mandatory on every create, update and delete, in the type and at runtime; the engine never invents one",
+      "answer": "Mandatory on every create, update and delete, in the type and at runtime; the engine never invents one"
+    },
+    {
+      "id": "notification-recovery",
+      "title": "Where does startup notification repair look?",
+      "options": [
+        "At the stored conflict history IDs of every record (open and superseded), not only the current view",
+        "Current view only"
+      ],
+      "recommended": "At the stored conflict history IDs of every record (open and superseded), not only the current view",
+      "answer": "At the stored conflict history IDs of every record (open and superseded), not only the current view"
+    },
+    {
+      "id": "journal-tail",
+      "title": "How is a bad final journal record treated?",
+      "options": [
+        "Truncate only an incomplete append (declared length exceeds bytes present); a complete-length record with a bad checksum fails with STORAGE_CORRUPT, unless the operator explicitly asks to truncate it",
+        "Truncate any bad tail record"
+      ],
+      "recommended": "Truncate only an incomplete append (declared length exceeds bytes present); a complete-length record with a bad checksum fails with STORAGE_CORRUPT, unless the operator explicitly asks to truncate it",
+      "answer": "Truncate only an incomplete append (declared length exceeds bytes present); a complete-length record with a bad checksum fails with STORAGE_CORRUPT, unless the operator explicitly asks to truncate it"
+    },
+    {
+      "id": "lock-takeover",
+      "title": "When may a file lock be taken over?",
+      "options": [
+        "Only when the holder is provably dead on the same host and boot; never by timeout; epochs in the journal detect a rogue writer",
+        "When the heartbeat is stale"
+      ],
+      "recommended": "Only when the holder is provably dead on the same host and boot; never by timeout; epochs in the journal detect a rogue writer",
+      "answer": "Only when the holder is provably dead on the same host and boot; never by timeout; epochs in the journal detect a rogue writer"
+    },
+    {
+      "id": "push-isolation",
+      "title": "How are multi-origin push batches isolated?",
+      "options": [
+        "The sender pushes one origin per request; each request is atomic; a rejected origin is reported in rejectedOrigins and the others continue",
+        "Reject the whole multi-origin push"
+      ],
+      "recommended": "The sender pushes one origin per request; each request is atomic; a rejected origin is reported in rejectedOrigins and the others continue",
+      "answer": "The sender pushes one origin per request; each request is atomic; a rejected origin is reported in rejectedOrigins and the others continue"
+    },
+    {
+      "id": "pending-counts",
+      "title": "How are buffered and accepted ops counted?",
+      "options": [
+        "pendingBuffer counts buffered ops only; pendingOps counts accepted ops not yet acknowledged; buffered ops affect no vector, hash, context or acknowledgement",
+        "One combined count"
+      ],
+      "recommended": "pendingBuffer counts buffered ops only; pendingOps counts accepted ops not yet acknowledged; buffered ops affect no vector, hash, context or acknowledgement",
+      "answer": "pendingBuffer counts buffered ops only; pendingOps counts accepted ops not yet acknowledged; buffered ops affect no vector, hash, context or acknowledgement"
+    },
+    {
+      "id": "requirements-traceability",
+      "title": "Where are design-level names defined?",
+      "options": [
+        "In requirements.md: R5.4 (mutationId, MUTATION_ID_REUSED), R4.2 (NOT_SETTLED), R4.7 (rejectedOrigins), R2.7 (REPLICA_ID_REUSE), R8.8 (SCHEMA_DOWNGRADE), R9.6 and R10.1 (STORAGE_* and the full code list), R12.3 (pendingBuffer, pendingOps)",
+        "Design only"
+      ],
+      "recommended": "In requirements.md: R5.4 (mutationId, MUTATION_ID_REUSED), R4.2 (NOT_SETTLED), R4.7 (rejectedOrigins), R2.7 (REPLICA_ID_REUSE), R8.8 (SCHEMA_DOWNGRADE), R9.6 and R10.1 (STORAGE_* and the full code list), R12.3 (pendingBuffer, pendingOps)",
+      "answer": "In requirements.md: R5.4 (mutationId, MUTATION_ID_REUSED), R4.2 (NOT_SETTLED), R4.7 (rejectedOrigins), R2.7 (REPLICA_ID_REUSE), R8.8 (SCHEMA_DOWNGRADE), R9.6 and R10.1 (STORAGE_* and the full code list), R12.3 (pendingBuffer, pendingOps)"
+    },
+    {
+      "id": "pending-identity",
+      "title": "How is op identity protected while an op is pending?",
+      "options": [
+        "Check op/ and pend/ for the same (replicaId, seq): same hash is a duplicate, different hash is INTEGRITY_CONFLICT, pending entries are insert-if-absent and never overwritten; repeat the check inside the commit transaction and under the per-replica mutex",
+        "Check op/ only"
+      ],
+      "recommended": "Check op/ and pend/ for the same (replicaId, seq): same hash is a duplicate, different hash is INTEGRITY_CONFLICT, pending entries are insert-if-absent and never overwritten; repeat the check inside the commit transaction and under the per-replica mutex",
+      "answer": "Check op/ and pend/ for the same (replicaId, seq): same hash is a duplicate, different hash is INTEGRITY_CONFLICT, pending entries are insert-if-absent and never overwritten; repeat the check inside the commit transaction and under the per-replica mutex"
+    },
+    {
+      "id": "no-lock-override",
+      "title": "Is there a lock override in the MVP?",
+      "options": [
+        "No option, flag or API; refuse with STORAGE_LOCKED unless the holder is provably dead on the same host, boot and PID namespace; manual recovery is an offline destructive guide",
+        "Provide --break-lock"
+      ],
+      "recommended": "No option, flag or API; refuse with STORAGE_LOCKED unless the holder is provably dead on the same host, boot and PID namespace; manual recovery is an offline destructive guide",
+      "answer": "No option, flag or API; refuse with STORAGE_LOCKED unless the holder is provably dead on the same host, boot and PID namespace; manual recovery is an offline destructive guide"
+    },
+    {
+      "id": "compaction-trust",
+      "title": "What does ADV compaction assume about members?",
+      "options": [
+        "Members follow the acknowledgement protocol; the relay records but cannot verify claims; not Byzantine-safe; off by default",
+        "Claim Byzantine safety"
+      ],
+      "recommended": "Members follow the acknowledgement protocol; the relay records but cannot verify claims; not Byzantine-safe; off by default",
+      "answer": "Members follow the acknowledgement protocol; the relay records but cannot verify claims; not Byzantine-safe; off by default"
+    },
+    {
+      "id": "batch-dedup",
+      "title": "How are identical copies of an op inside one batch handled?",
+      "options": [
+        "Scan first for same-ID different-hash conflicts, then collapse identical copies to one representative, then compare with op/ and pend/; the same rule for relay pushes",
+        "Compare each op with every other op in the batch"
+      ],
+      "recommended": "Scan first for same-ID different-hash conflicts, then collapse identical copies to one representative, then compare with op/ and pend/; the same rule for relay pushes",
+      "answer": "Scan first for same-ID different-hash conflicts, then collapse identical copies to one representative, then compare with op/ and pend/; the same rule for relay pushes"
+    },
+    {
+      "id": "lock-identity-fallback",
+      "title": "What if PID-namespace identity is unavailable?",
+      "options": [
+        "hostId is a triple {hostname, bootId, pidNamespace}; if any part is not reliably read, automatic takeover is refused with STORAGE_LOCKED and manual offline recovery is the only fallback",
+        "Fall back to hostname and boot ID"
+      ],
+      "recommended": "hostId is a triple {hostname, bootId, pidNamespace}; if any part is not reliably read, automatic takeover is refused with STORAGE_LOCKED and manual offline recovery is the only fallback",
+      "answer": "hostId is a triple {hostname, bootId, pidNamespace}; if any part is not reliably read, automatic takeover is refused with STORAGE_LOCKED and manual offline recovery is the only fallback"
+    },
+    {
+      "id": "relay-concurrency-test",
+      "title": "Relay concurrent same-ID pushes?",
+      "options": [
+        "Real-relay test: identical hashes stored and acknowledged once; different hashes keep the first committed version and fail the other with INTEGRITY_CONFLICT; queue and transaction re-check each proven sufficient alone",
+        "No relay-level test"
+      ],
+      "recommended": "Real-relay test: identical hashes stored and acknowledged once; different hashes keep the first committed version and fail the other with INTEGRITY_CONFLICT; queue and transaction re-check each proven sufficient alone",
+      "answer": "Real-relay test: identical hashes stored and acknowledged once; different hashes keep the first committed version and fail the other with INTEGRITY_CONFLICT; queue and transaction re-check each proven sufficient alone"
+    },
+    {
+      "id": "pending-promotion",
+      "title": "How are buffered ops accepted when their gap is filled?",
+      "options": [
+        "A distinct promotion path: verify each pend/ entry against its recorded hash, then in one transaction write op/ and rop/, update derived state, vector and maxLamport, and delete pend/; already-promoted ops are skipped; promoted ops are not duplicates and lower pendingBuffer",
+        "Treat the pend/ entry as an incoming duplicate"
+      ],
+      "recommended": "A distinct promotion path: verify each pend/ entry against its recorded hash, then in one transaction write op/ and rop/, update derived state, vector and maxLamport, and delete pend/; already-promoted ops are skipped; promoted ops are not duplicates and lower pendingBuffer",
+      "answer": "A distinct promotion path: verify each pend/ entry against its recorded hash, then in one transaction write op/ and rop/, update derived state, vector and maxLamport, and delete pend/; already-promoted ops are skipped; promoted ops are not duplicates and lower pendingBuffer"
+    },
+    {
+      "id": "journal-framing",
+      "title": "How is a torn append told apart from a corrupted length field?",
+      "options": [
+        "32-byte header with its own 64-bit header check covering the length, plus a SHA-256 trailer; truncate automatically only when a verified header declares more bytes than remain; a partial header of fewer than 32 bytes fails closed with STORAGE_CORRUPT unless the operator explicitly truncates it at the reported offset; everything else fails with STORAGE_CORRUPT and no data file is modified",
+        "Trust the declared length"
+      ],
+      "recommended": "32-byte header with its own 64-bit header check covering the length, plus a SHA-256 trailer; truncate automatically only when a verified header declares more bytes than remain; a partial header of fewer than 32 bytes fails closed with STORAGE_CORRUPT unless the operator explicitly truncates it at the reported offset; everything else fails with STORAGE_CORRUPT and no data file is modified",
+      "answer": "32-byte header with its own 64-bit header check covering the length, plus a SHA-256 trailer; truncate automatically only when a verified header declares more bytes than remain; a partial header of fewer than 32 bytes fails closed with STORAGE_CORRUPT unless the operator explicitly truncates it at the reported offset; everything else fails with STORAGE_CORRUPT and no data file is modified"
+    },
+    {
+      "id": "lock-test-platforms",
+      "title": "Stale-lock takeover tests per platform?",
+      "options": [
+        "Takeover after a killed holder is Linux-only with reliable /proc identity; on Windows and macOS the same case must give STORAGE_LOCKED until documented manual offline recovery",
+        "Takeover tests on every platform"
+      ],
+      "recommended": "Takeover after a killed holder is Linux-only with reliable /proc identity; on Windows and macOS the same case must give STORAGE_LOCKED until documented manual offline recovery",
+      "answer": "Takeover after a killed holder is Linux-only with reliable /proc identity; on Windows and macOS the same case must give STORAGE_LOCKED until documented manual offline recovery"
+    },
+    {
+      "id": "lock-recovery-guard",
+      "title": "How is stale-lock takeover serialized?",
+      "options": [
+        "Recovery guard file LOCK.recovery created with wx; revalidate the observed lock nonce while holding it; ordinary opens refuse while a guard exists and re-check after creating LOCK; a leftover guard is never auto-removed; a live or unprovable holder is never displaced",
+        "Atomic rename of LOCK only",
+        "Refuse all automatic takeover"
+      ],
+      "recommended": "Recovery guard file LOCK.recovery created with wx; revalidate the observed lock nonce while holding it; ordinary opens refuse while a guard exists and re-check after creating LOCK; a leftover guard is never auto-removed; a live or unprovable holder is never displaced",
+      "answer": "Recovery guard file LOCK.recovery created with wx; revalidate the observed lock nonce while holding it; ordinary opens refuse while a guard exists and re-check after creating LOCK; a leftover guard is never auto-removed; a live or unprovable holder is never displaced"
+    },
+    {
+      "id": "partial-header",
+      "title": "What happens to a trailing journal fragment shorter than a header?",
+      "options": [
+        "Fail closed with STORAGE_CORRUPT (partial-header); only an explicit operator truncation at the reported offset removes it",
+        "Truncate automatically"
+      ],
+      "recommended": "Fail closed with STORAGE_CORRUPT (partial-header); only an explicit operator truncation at the reported offset removes it",
+      "answer": "Fail closed with STORAGE_CORRUPT (partial-header); only an explicit operator truncation at the reported offset removes it"
+    },
+    {
+      "id": "sync-baseline",
+      "title": "What is the baseline for the verified sync point?",
+      "options": [
+        "Stable double read: L_start before the verification pull, E from the reply, L_end after; complete only when E == L_start == L_end with nothing blocked or rejected",
+        "Compare E with the vector read after the reply"
+      ],
+      "recommended": "Stable double read: L_start before the verification pull, E from the reply, L_end after; complete only when E == L_start == L_end with nothing blocked or rejected",
+      "answer": "Stable double read: L_start before the verification pull, E from the reply, L_end after; complete only when E == L_start == L_end with nothing blocked or rejected"
+    },
+    {
+      "id": "mutation-id-helper",
+      "title": "How is newMutationId related to injected randomness?",
+      "options": [
+        "newMutationId(random: Random) with no default, plus replica.newMutationId() bound to the replica's injected Random; platformRandom and seededRandom(seed) provide sources",
+        "Standalone helper with hidden randomness"
+      ],
+      "recommended": "newMutationId(random: Random) with no default, plus replica.newMutationId() bound to the replica's injected Random; platformRandom and seededRandom(seed) provide sources",
+      "answer": "newMutationId(random: Random) with no default, plus replica.newMutationId() bound to the replica's injected Random; platformRandom and seededRandom(seed) provide sources"
+    },
+    {
+      "id": "manual-recovery-artifacts",
+      "title": "What does manual offline recovery remove?",
+      "options": [
+        "Stop everything, confirm no holder or recovery process, back up the directory, inspect, then remove LOCK.recovery, LOCK.stale-* and LOCK (never data files), reopen and validate the journal; tested end to end",
+        "Delete LOCK only"
+      ],
+      "recommended": "Stop everything, confirm no holder or recovery process, back up the directory, inspect, then remove LOCK.recovery, LOCK.stale-* and LOCK (never data files), reopen and validate the journal; tested end to end",
+      "answer": "Stop everything, confirm no holder or recovery process, back up the directory, inspect, then remove LOCK.recovery, LOCK.stale-* and LOCK (never data files), reopen and validate the journal; tested end to end"
+    },
+    {
+      "id": "random-float",
+      "title": "How does retry jitter get its value from Random?",
+      "options": [
+        "Keep Random.randomBytes as the only primitive and define randomFloat(random) deterministically from 8 bytes (53 bits, range [0,1)); platformRandom, seededRandom and retry tests use it; no Math.random fallback",
+        "Add nextFloat to Random"
+      ],
+      "recommended": "Keep Random.randomBytes as the only primitive and define randomFloat(random) deterministically from 8 bytes (53 bits, range [0,1)); platformRandom, seededRandom and retry tests use it; no Math.random fallback",
+      "answer": "Keep Random.randomBytes as the only primitive and define randomFloat(random) deterministically from 8 bytes (53 bits, range [0,1)); platformRandom, seededRandom and retry tests use it; no Math.random fallback"
+    },
+    {
+      "id": "recovery-order",
+      "title": "In what order does manual recovery remove lock artifacts?",
+      "options": [
+        "Keep the existing recovery guard (or create a maintenance guard by exclusive creation), re-read LOCK under it, remove LOCK.stale-* and LOCK, remove LOCK.recovery last, then reopen; ordinary openers get STORAGE_LOCKED throughout",
+        "Remove LOCK.recovery first"
+      ],
+      "recommended": "Keep the existing recovery guard (or create a maintenance guard by exclusive creation), re-read LOCK under it, remove LOCK.stale-* and LOCK, remove LOCK.recovery last, then reopen; ordinary openers get STORAGE_LOCKED throughout",
+      "answer": "Keep the existing recovery guard (or create a maintenance guard by exclusive creation), re-read LOCK under it, remove LOCK.stale-* and LOCK, remove LOCK.recovery last, then reopen; ordinary openers get STORAGE_LOCKED throughout"
+    },
+    {
+      "id": "random-float-byte-order",
+      "title": "Byte order for randomFloat?",
+      "options": [
+        "Unsigned big-endian; b0 is the most significant byte; keep the top 53 bits; vectors pin the order",
+        "Unspecified"
+      ],
+      "recommended": "Unsigned big-endian; b0 is the most significant byte; keep the top 53 bits; vectors pin the order",
+      "answer": "Unsigned big-endian; b0 is the most significant byte; keep the top 53 bits; vectors pin the order"
+    },
+    {
+      "id": "op-history-api",
+      "title": "How is R2.5 record operation history exposed?",
+      "options": [
+        "collection.history(recordId) returning OpHistoryEntry[] in D4 order with concurrentWith, built by a pure buildOpHistory from the rop/ index; separate from conflicts.history",
+        "Reuse conflicts.history"
+      ],
+      "recommended": "collection.history(recordId) returning OpHistoryEntry[] in D4 order with concurrentWith, built by a pure buildOpHistory from the rop/ index; separate from conflicts.history",
+      "answer": "collection.history(recordId) returning OpHistoryEntry[] in D4 order with concurrentWith, built by a pure buildOpHistory from the rop/ index; separate from conflicts.history"
+    },
+    {
+      "id": "task-structure",
+      "title": "How are tasks specified?",
+      "options": [
+        "Every task has Owner, Paths, Depends, Req and Done when; review-only tasks name read targets and write only docs/reviews; cross-package tests belong to Testing and QA under tests/**; ADV tasks sit after Gate 4 in requirements order with the GHOSTLINE counter last (T5.9)",
+        "Free-form tasks"
+      ],
+      "recommended": "Every task has Owner, Paths, Depends, Req and Done when; review-only tasks name read targets and write only docs/reviews; cross-package tests belong to Testing and QA under tests/**; ADV tasks sit after Gate 4 in requirements order with the GHOSTLINE counter last (T5.9)",
+      "answer": "Every task has Owner, Paths, Depends, Req and Done when; review-only tasks name read targets and write only docs/reviews; cross-package tests belong to Testing and QA under tests/**; ADV tasks sit after Gate 4 in requirements order with the GHOSTLINE counter last (T5.9)"
+    },
+    {
+      "id": "context-storage",
+      "title": "How is causal context stored?",
+      "options": [
+        "Full version vector stored, sent and hashed in the MVP; compact storage is an optional later optimization that must reconstruct the full vector before validation, hashing, transmission and ordering",
+        "Compact storage required"
+      ],
+      "recommended": "Full version vector stored, sent and hashed in the MVP; compact storage is an optional later optimization that must reconstruct the full vector before validation, hashing, transmission and ordering",
+      "answer": "Full version vector stored, sent and hashed in the MVP; compact storage is an optional later optimization that must reconstruct the full vector before validation, hashing, transmission and ordering"
+    },
+    {
+      "id": "gate-numbering",
+      "title": "Gate numbering?",
+      "options": [
+        "Gate 0 contract freeze, Gate 1 engine usable, Gate 2 MVP engine complete, Gate 3 MVP complete (apps), Gate 4 release; ADV after Gate 4; design and tasks use the same numbers",
+        "Design and tasks differ"
+      ],
+      "recommended": "Gate 0 contract freeze, Gate 1 engine usable, Gate 2 MVP engine complete, Gate 3 MVP complete (apps), Gate 4 release; ADV after Gate 4; design and tasks use the same numbers",
+      "answer": "Gate 0 contract freeze, Gate 1 engine usable, Gate 2 MVP engine complete, Gate 3 MVP complete (apps), Gate 4 release; ADV after Gate 4; design and tasks use the same numbers"
+    },
+    {
+      "id": "last-sync-wall",
+      "title": "When does lastSyncWall change?",
+      "options": [
+        "Only when a sync ends complete; partial and failed syncs update lastResult but never lastSyncWall",
+        "After every sync"
+      ],
+      "recommended": "Only when a sync ends complete; partial and failed syncs update lastResult but never lastSyncWall",
+      "answer": "Only when a sync ends complete; partial and failed syncs update lastResult but never lastSyncWall"
+    },
+    {
+      "id": "adv-order",
+      "title": "Is the ADV order mandatory?",
+      "options": [
+        "Yes: T5.1 to T5.9 are chained by Depends, T5.9 also depends on T5.4 and T5.8, and every ADV task has an independent Testing and QA review report",
+        "No, ADV tasks run in parallel"
+      ],
+      "recommended": "Yes: T5.1 to T5.9 are chained by Depends, T5.9 also depends on T5.4 and T5.8, and every ADV task has an independent Testing and QA review report",
+      "answer": "Yes: T5.1 to T5.9 are chained by Depends, T5.9 also depends on T5.4 and T5.8, and every ADV task has an independent Testing and QA review report"
+    },
+    {
+      "id": "review-report-ownership",
+      "title": "Who owns review reports?",
+      "options": [
+        "Testing and QA owns docs/reviews/** (design 18.2 and OWNERS); the ADR-0006 update in T5.1 is owned by Architecture and research",
+        "Unassigned"
+      ],
+      "recommended": "Testing and QA owns docs/reviews/** (design 18.2 and OWNERS); the ADR-0006 update in T5.1 is owned by Architecture and research",
+      "answer": "Testing and QA owns docs/reviews/** (design 18.2 and OWNERS); the ADR-0006 update in T5.1 is owned by Architecture and research"
+    },
+    {
+      "id": "spec-approval",
+      "title": "Is the specification (requirements.md, design.md, tasks.md) approved for implementation?",
+      "options": [
+        "Approved",
+        "Not approved"
+      ],
+      "recommended": "Approved",
+      "answer": "Approved by the user. Implementation may start at Phase 0 (T0.1). Review history: 13 corrections, then 6, then 1 (T5.2 ownership, T5.6 reformat) were made and verified before approval."
+    }
+  ],
+  "blocking": null,
+  "context": {
+    "template": "greenfield TypeScript monorepo (no existing module in C:\\Users\\ashwi\\Desktop\\WEAVE)"
+  }
+}

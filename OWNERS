@@ -1,0 +1,97 @@
+# OWNERS: one owner per path (design.md section 18.2). Parallel agents edit only their own paths.
+# A path that matches no row belongs to "Architecture and research" until this table changes.
+
+Architecture and research:
+  .kiro/specs/**
+  docs/adr/**
+  docs/architecture.md
+  docs/protocol.md
+  docs/diagrams/**
+  packages/core/src/contracts/**
+
+Core engine:
+  packages/core/src/canonical/**
+  packages/core/src/ops/**
+  packages/core/src/schema/**
+  packages/core/src/engine/**
+  packages/core/src/diagnostics/**
+  packages/core/src/index.ts
+  packages/core/test/canonical/**
+  packages/core/test/ops/**
+  packages/core/test/schema/**
+  packages/core/test/engine/**
+  packages/core/test/diagnostics/**
+  packages/core/test/api/**
+  packages/core/package.json
+  packages/core/tsconfig.json
+  packages/core/README.md
+
+Conflict resolution:
+  packages/core/src/resolvers/**
+  packages/core/src/state/**
+  packages/core/test/resolvers/**
+  packages/core/test/state/**
+
+Synchronization:
+  packages/core/src/sync/**
+  packages/core/src/protocol.ts
+  packages/core/test/sync/**
+  packages/transport/**
+  packages/testing/src/transport/**
+
+Storage and data:
+  packages/storage/**
+  packages/testing/src/storage/**
+
+Relay:
+  packages/relay/**
+
+Testing and QA:
+  packages/testing/src/simulator/**
+  packages/testing/src/faults/**
+  packages/testing/src/generators/**
+  packages/testing/src/index.ts
+  packages/testing/package.json
+  packages/testing/tsconfig.json
+  packages/testing/README.md
+  packages/testing/test/**
+  tests/**
+  docs/reviews/**
+
+GHOSTLINE:
+  apps/ghostline/**
+
+FIELDNOTE:
+  apps/fieldnote/**
+
+Developer experience and documentation:
+  README.md
+  CHANGELOG.md
+  docs/guides/**
+  docs/demo-plan.md
+  docs/kiro-crew.md
+  docs/app-differences.md
+  docs/api/**
+  typedoc.json
+
+Security and release:
+  .github/**
+  scripts/**
+  LICENSE
+  OWNERS
+  docs/threat-model.md
+  docs/disclosure.md
+  .kiro/hooks/**
+  .kiro/steering/**
+  package.json
+  package-lock.json
+  tsconfig.base.json
+  tsconfig.json
+  vitest.config.ts
+  .nvmrc
+  .editorconfig
+  .prettierrc
+  .prettierignore
+  .gitignore
+  .gitattributes
+  eslint.config.js

@@ -1,0 +1,25 @@
+{
+  "name": "@weave/transport",
+  "version": "0.1.0",
+  "description": "WEAVE transports: in-process and HTTP client",
+  "license": "MIT",
+  "type": "module",
+  "private": false,
+  "sideEffects": false,
+  "exports": {
+    "./in-process": {
+      "types": "./dist/in-process/index.d.ts",
+      "default": "./dist/in-process/index.js"
+    },
+    "./http": {
+      "types": "./dist/http/index.d.ts",
+      "default": "./dist/http/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@weave/core": "*"
+  }
+}

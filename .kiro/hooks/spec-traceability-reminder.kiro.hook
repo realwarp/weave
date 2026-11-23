@@ -1,0 +1,17 @@
+{
+  "enabled": true,
+  "name": "Keep spec traceability current",
+  "description": "When requirements.md or design.md changes, remind the agent to update the traceability tables and tasks.md.",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      ".kiro/specs/**/requirements.md",
+      ".kiro/specs/**/design.md"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "The requirements or design changed. Update the traceability table in design.md (section 14), the coverage table in tasks.md, and .spec-state.json so they match. Do not change approved decisions without the user's approval."
+  }
+}

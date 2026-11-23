@@ -1,0 +1,25 @@
+{
+  "name": "@weave/relay",
+  "version": "0.1.0",
+  "description": "WEAVE relay server: durable store-and-forward sync peer",
+  "license": "MIT",
+  "type": "module",
+  "private": false,
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "bin": {
+    "weave-relay": "./dist/cli.js"
+  },
+  "dependencies": {
+    "@weave/core": "*",
+    "@weave/storage": "*"
+  }
+}

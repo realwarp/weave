@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "name": "Lint and typecheck on TypeScript save",
+  "description": "When a TypeScript file is saved, run lint and the TypeScript build to catch determinism-rule and type errors early.",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": ["packages/**/*.ts", "apps/**/*.ts", "tests/**/*.ts"]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A TypeScript file was saved. Run `npm run lint` and `npm run build` from the repository root and fix any errors in the files owned by the current task. Do not edit files owned by another workstream (see OWNERS)."
+  }
+}

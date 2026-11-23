@@ -1,0 +1,29 @@
+{
+  "name": "@weave/storage",
+  "version": "0.1.0",
+  "description": "WEAVE storage adapters: memory, file (Node.js) and IndexedDB (browser)",
+  "license": "MIT",
+  "type": "module",
+  "private": false,
+  "sideEffects": false,
+  "exports": {
+    "./memory": {
+      "types": "./dist/memory/index.d.ts",
+      "default": "./dist/memory/index.js"
+    },
+    "./file": {
+      "types": "./dist/file/index.d.ts",
+      "default": "./dist/file/index.js"
+    },
+    "./indexeddb": {
+      "types": "./dist/indexeddb/index.d.ts",
+      "default": "./dist/indexeddb/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@weave/core": "*"
+  }
+}

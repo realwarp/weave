@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "name": "Run tests before commit",
+  "description": "Before a commit is made, run the unit tests, boundary check and license check.",
+  "version": "1",
+  "when": {
+    "type": "preToolUse",
+    "toolTypes": ["shell"]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "If the shell command you are about to run is `git commit`, first run `npm test`, `npm run check:boundaries` and `npm run check:license`, and only commit when all of them pass. For any other command do nothing."
+  }
+}

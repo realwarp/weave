@@ -1,0 +1,10 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/storage" },
+    { "path": "packages/transport" },
+    { "path": "packages/relay" },
+    { "path": "packages/testing" }
+  ]
+}

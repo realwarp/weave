@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+.vite/
+playwright-report/
+test-results/
+.weave-data/
+relay-data/
+*.log
+.DS_Store
+Thumbs.db
+# NOTE: .kiro/ is intentionally NOT ignored (hackathon requirement R19.2).
