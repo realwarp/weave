@@ -1,0 +1,29 @@
+name: Nightly properties
+
+# Runs the cross-package property suites with fresh random seeds (design 12.2). Every test name
+# carries its seed, and the seeds are printed first, so a failure can be reproduced with
+#   WEAVE_PROPERTY_SEEDS=<seed> npx vitest run tests/property
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  properties:
+    name: Property suites with random seeds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Choose seeds
+        run: |
+          SEEDS=$(node -e "const c=require('node:crypto');console.log(Array.from({length:20},()=>c.randomInt(1,2**31)).join(','))")
+          echo "WEAVE_PROPERTY_SEEDS=$SEEDS" >> "$GITHUB_ENV"
+          echo "Property seeds: $SEEDS"
+      - run: npx vitest run tests/property tests/integration

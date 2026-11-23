@@ -300,7 +300,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Implement `seededRandom(seed)` (SplitMix64, implements `Random`), a simulator that really runs replicas (write, sync in random pairs, go offline, upgrade) so contexts and Lamport values are genuine, fast-check arbitraries for ops, frontiers and batches, and a fake clock and scheduler.
   - Done when: determinism tests show that the same seed gives the same bytes and the same history; the simulator can drive two replicas to equal hashes once T1.A5 and T1.D3 land.
 
-- [ ] **T1.F2 Cross-package property and scenario suites [MVP]**
+- [x] **T1.F2 Cross-package property and scenario suites [MVP]**
   - Owner: Testing and QA.
   - Paths: `tests/property/**`, `tests/integration/**`.
   - Depends: T1.F1, T1.A6, T1.D3. Req: R15.1 to R15.4, R7, design 12.2, 12.3.

@@ -1,0 +1,26 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "incremental": false,
+    "declaration": false,
+    "declarationMap": false,
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "rootDir": "..",
+    "baseUrl": ".",
+    "paths": {
+      "@weave/core": ["../packages/core/src/index.ts"],
+      "@weave/core/protocol": ["../packages/core/src/protocol.ts"],
+      "@weave/storage/memory": ["../packages/storage/src/memory/index.ts"],
+      "@weave/storage/file": ["../packages/storage/src/file/index.ts"],
+      "@weave/storage/indexeddb": ["../packages/storage/src/indexeddb/index.ts"],
+      "@weave/transport/in-process": ["../packages/transport/src/in-process/index.ts"],
+      "@weave/transport/http": ["../packages/transport/src/http/index.ts"],
+      "@weave/relay": ["../packages/relay/src/index.ts"],
+      "@weave/testing": ["../packages/testing/src/index.ts"]
+    }
+  },
+  "include": ["property", "integration", "quickstart", "boundaries", "canonical-reference/*.ts"]
+}
