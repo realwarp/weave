@@ -457,13 +457,13 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Depends: T1.A9, T1.G1, Gate 3. Req: R11.3, R11.4, R18.1, R18.2.
   - Done when: every exported symbol is documented (including `collection.history`, `OpHistoryEntry`, `newMutationId`); the root README has purpose, install, quick start, architecture summary and links to both demos; READMEs for packages and apps (owned by their owners) exist and are linked; **`CHANGELOG.md` has the `0.1.0` release entry** listing the public API and the [ADV] features that are not implemented.
 
-- [ ] **T4.4 Kiro Crew explanation and demo plan [MVP]**
+- [x] **T4.4 Kiro Crew explanation and demo plan [MVP]**
   - Owner: Developer experience and documentation.
   - Paths: `docs/kiro-crew.md`, `docs/demo-plan.md`.
   - Depends: Gate 3. Req: R19.4, R19.5.
   - Done when: `kiro-crew.md` lists the workstreams, owners, dependency graph, gates and reviewer checks and which agents produced what; `demo-plan.md` has steps, expected output and a recording script.
 
-- [ ] **T4.5 Disclosure and license check [MVP]**
+- [x] **T4.5 Disclosure and license check [MVP]**
   - Owner: Security and release.
   - Paths: `scripts/check-license.mjs`, `LICENSE`, `docs/disclosure.md`.
   - Depends: Gate 3. Req: R19.1, R19.6.

@@ -68,24 +68,39 @@ See `docs/architecture.md` and `docs/adr/`.
 
 ## Packages
 
-| Package            | Contents                                                        |
-| ------------------ | --------------------------------------------------------------- |
-| `@weave/core`      | Engine, schema, resolvers, canonical encoding, sync engine      |
-| `@weave/storage`   | Memory, file (Node.js) and IndexedDB (browser) adapters         |
-| `@weave/transport` | In-process and HTTP client transports                           |
-| `@weave/relay`     | Store-and-forward relay server and `weave-relay` CLI            |
-| `@weave/testing`   | Conformance suites, simulator, fault injection (dev only)       |
+| Package                                         | Contents                                                   |
+| ----------------------------------------------- | ---------------------------------------------------------- |
+| [`@weave/core`](packages/core/README.md)        | Engine, schema, resolvers, canonical encoding, sync engine |
+| [`@weave/storage`](packages/storage/README.md)  | Memory, file (Node.js) and IndexedDB (browser) adapters    |
+| [`@weave/transport`](packages/transport/README.md) | In-process and HTTP client transports                   |
+| [`@weave/relay`](packages/relay/README.md)      | Store-and-forward relay server and `weave-relay` CLI       |
+| [`@weave/testing`](packages/testing/README.md)  | Conformance suites, simulator, fault injection (dev only)  |
+
+API reference: `npm run docs:api` writes it to `docs/api/`.
+
+## Demo applications
+
+Both use only WEAVE's public API. [How they differ](docs/app-differences.md).
+
+- [GHOSTLINE](apps/ghostline/README.md): community coordination. Announcements, help requests
+  that people claim and tag, and a notices panel. `npm run dev:ghostline`, `npm run demo:ghostline`.
+- [FIELDNOTE](apps/fieldnote/README.md): field inspections. Observations with severity, an
+  inspection status workflow, a v1 to v2 schema migration and a conflict history view.
+  `npm run dev:fieldnote`, `npm run demo:fieldnote`.
+
+The demos start a real relay process and print every device's hashes at the end. A recording
+script is in [docs/demo-plan.md](docs/demo-plan.md).
 
 ## Status
 
 Built and tested: the core engine, memory, file and IndexedDB storage (IndexedDB in Chromium), both
-transports, the relay, the simulator, and the cross-package property, fuzz and browser suites.
-
-Not built yet: the GHOSTLINE and FIELDNOTE applications.
+transports, the relay, the simulator, both applications, and the property, scenario, fuzz,
+browser, relay end-to-end and benchmark suites. See [CHANGELOG.md](CHANGELOG.md).
 
 Not implemented ([ADV] features): compaction and `removePeer`, snapshot bootstrap, `restore` and
 `update-wins`, the counter resolver and custom resolvers, holding newer-schema ops, the
-authorization hook, peer bans, the WebSocket transport.
+authorization hook and authenticated identity, peer bans, the WebSocket transport and direct
+network sync, and the GHOSTLINE "me too" counter.
 
 ## Guides
 
@@ -95,6 +110,15 @@ authorization hook, peer bans, the WebSocket transport.
 - [Migrations](docs/guides/migrations.md)
 - [Storage recovery](docs/guides/storage-recovery.md)
 
+## Project documents
+
+- [Architecture](docs/architecture.md), [protocol](docs/protocol.md) and the
+  [decision records](docs/adr/)
+- [Threat model](docs/threat-model.md)
+- [How this project was built with Kiro Crew](docs/kiro-crew.md)
+- [Disclosure](docs/disclosure.md): no prior code, the parent-repository situation, third-party tools
+- Review reports for each gate: [docs/reviews/](docs/reviews/)
+
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).
