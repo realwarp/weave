@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Core engine: ops, canonical encoding (RFC 8785), hashing, schema definitions, field builders, resolvers (last-writer-wins, max, min, set-union, max-rank), state derivation, replica open/write/read/query, subscription, sync engine (version vector exchange, batch transfer, retry, pending buffer, schema-aware delivery)
-- Storage adapters: memory, file (journal with checksums, locking, recovery), IndexedDB (not yet browser-tested)
+- Storage adapters: memory, file (journal with checksums, locking, recovery), IndexedDB (conformance suite passes in Chromium)
 - Transport: in-process, HTTP client
 - Relay: `RelayCore`, HTTP server, `weave-relay` CLI with bearer token, limits and redacted logs
 - Simulator that runs real replicas, and cross-package property and integration suites

@@ -78,10 +78,8 @@ See `docs/architecture.md` and `docs/adr/`.
 
 ## Status
 
-Built and tested: the core engine, memory and file storage, both transports, the relay, the
-simulator and the cross-package property suites.
-
-Built but not yet verified in a browser: the IndexedDB adapter.
+Built and tested: the core engine, memory, file and IndexedDB storage (IndexedDB in Chromium), both
+transports, the relay, the simulator, and the cross-package property, fuzz and browser suites.
 
 Not built yet: the GHOSTLINE and FIELDNOTE applications.
 

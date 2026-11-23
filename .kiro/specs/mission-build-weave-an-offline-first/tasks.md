@@ -233,7 +233,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Implement `hostId` as `{hostname, bootId, pidNamespace}` with the reliable or unproven rule, `LOCK` with `wx`, the open procedure with `LOCK.recovery` (guard first, revalidation of the observed nonce, ordinary-open refusal and post-create re-check, a guard that is never removed automatically), `STORAGE_LOCKED`, `STORAGE_LOCK_LOST` (nonce re-read before every write), epochs, and no override option.
   - Done when: the lock tests of design 9.1 pass: live holder refused whatever its age; different or unproven `hostId` refused; Linux takeover; Windows and macOS refusal; the reviewed takeover interleaving; an N-process race with a writer counter at every failpoint; guard behaviors; a static test that no public option or CLI flag overrides a lock; and the **manual recovery script test** (six leftover combinations, the guide's six steps followed literally with the guard kept until last, the reverse-order control, the negative tests, and the manual-cleanup concurrency test where ordinary openers receive `STORAGE_LOCKED` throughout) passes once T4.2 provides the guide text it executes.
 
-- [ ] **T1.C4 IndexedDB adapter [MVP]**
+- [x] **T1.C4 IndexedDB adapter [MVP]**
   - Owner: Storage and data.
   - Paths: `packages/storage/src/indexeddb/**`, `packages/storage/test/indexeddb/**`.
   - Depends: T1.C1. Req: R9.1, R9.3, design 9.
@@ -373,7 +373,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Depends: T2.3. Req: R16.1, R16.2, R4.7, R15.3.
   - Done when: a fuzz suite sends malformed lines, oversized bodies, non-canonical ops, wrong hashes, duplicate and conflicting IDs, and unsupported values to replicas and to the relay; nothing crashes, nothing is partially written, and the data files are unchanged after each rejected input.
 
-- [ ] **T2.8 Browser tests [MVP]**
+- [x] **T2.8 Browser tests [MVP]**
   - Owner: Testing and QA.
   - Paths: `tests/browser/**` (including the Playwright config), `docs/reviews/T2.8.md` (only if findings exist).
   - Depends: T1.A1, T1.C4. Req: R15.10, R9.3.
