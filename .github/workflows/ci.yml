@@ -62,7 +62,9 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
       - run: npx playwright test -c apps/ghostline/test/e2e
+      - run: npx playwright test -c apps/fieldnote/test/e2e
       - run: npm run demo:ghostline
+      - run: npm run demo:fieldnote
 
   reproducible-build:
     name: Reproducible build

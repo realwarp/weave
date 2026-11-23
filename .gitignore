@@ -15,3 +15,5 @@ docs/api/
 tests/quickstart/.generated/
 coverage/
 relay-data/
+test-results/
+playwright-report/

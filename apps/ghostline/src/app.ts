@@ -76,7 +76,15 @@ const relay = httpTransport({
 $('device').textContent = device;
 document.title = `GHOSTLINE - ${device}`;
 
-async function render(): Promise<void> {
+// Renders run one at a time: a change event and an action can both ask for one, and two
+// overlapping renders would each clear and then fill the same lists.
+let rendering: Promise<void> = Promise.resolve();
+function render(): Promise<void> {
+  rendering = rendering.then(draw, draw);
+  return rendering;
+}
+
+async function draw(): Promise<void> {
   const annList = $('announcements');
   annList.replaceChildren();
   for (const a of await listAnnouncements(session)) {

@@ -414,7 +414,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Collections `inspections` (v1 and v2 with the `location` split migration) and `observations` with `max-rank` status and `max` severity; `mutationId` handling as in T3.G1.
   - Done when: logic tests cover concurrent field edits (merged), status conflict (more advanced status wins), severity conflict (higher wins), the migration, the conflict history view data, and operation history of an inspection.
 
-- [ ] **T3.F2 FIELDNOTE UI and scripts [MVP]**
+- [x] **T3.F2 FIELDNOTE UI and scripts [MVP]**
   - Owner: FIELDNOTE.
   - Paths: `apps/fieldnote/index.html`, `apps/fieldnote/vite.config.ts`, `apps/fieldnote/package.json`, `apps/fieldnote/tsconfig.json`, `apps/fieldnote/src/app.ts`, `apps/fieldnote/src/demo.ts`, `apps/fieldnote/test/e2e/**`, `apps/fieldnote/README.md`.
   - Depends: T3.F1, T2.3, T2.4, T1.C4. Req: R14.3 to R14.7, design 13.2.
