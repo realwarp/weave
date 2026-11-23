@@ -439,7 +439,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 ## Phase 4: documentation, packaging, release (Gate 4)
 
-- [ ] **T4.1 ADRs 0004 to 0010, 0013 and 0014 [MVP]**
+- [x] **T4.1 ADRs 0004 to 0010, 0013 and 0014 [MVP]**
   - Owner: Architecture and research.
   - Paths: `docs/adr/0004-*.md` to `docs/adr/0010-*.md`, `docs/adr/0013-*.md`, `docs/adr/0014-*.md`.
   - Depends: Gate 2. Req: R17.2, design 16.
