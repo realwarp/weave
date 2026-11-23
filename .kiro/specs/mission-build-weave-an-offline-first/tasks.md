@@ -118,21 +118,21 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 ### Lane A: core engine (Core engine owner)
 
-- [ ] **T1.A1 Canonical codec and hashing [MVP]**
+- [x] **T1.A1 Canonical codec and hashing [MVP]**
   - Owner: Core engine.
   - Paths: `packages/core/src/canonical/**`, `packages/core/test/canonical/**`.
   - Depends: T0.3, T0.4. Req: D7, R2.8, R16.1, design 4.
   - Implement `assertSupported` (JSON-path errors, depth and size limits, `-0`), `encodeCanonical` (RFC 8785, UTF-16 key order, ES number form), `sha256Hex` (platform crypto), `compareUtf8`, and the hash helpers (op, state, op-set, conflict-view, mutation payload).
   - Done when: all vectors pass in Node (the Chromium run is T2.8); property tests show key-order independence and rejection of every unsupported type.
 
-- [ ] **T1.A2 Randomness and mutation IDs [MVP]**
+- [x] **T1.A2 Randomness and mutation IDs [MVP]**
   - Owner: Core engine.
   - Paths: `packages/core/src/ops/random.ts`, `packages/core/test/ops/random.test.ts`.
   - Depends: T0.3. Req: R5.4, R10.2, design 7.1.
   - Implement `platformRandom` (chunked `getRandomValues`), `randomFloat(random)` (unsigned big-endian, 53 bits), `newMutationId(random)` (16 bytes as 26 base32 characters), and the default `Clock`. The seeded generator is T1.F1.
   - Done when: the fixed-vector tests of design 12.3 pass (`80 00 00 00 00 00 00 00` gives 0.5; `00 00 00 00 00 00 08 00` gives 2^-53; the reversed bytes differ; all zero gives 0; all `0xFF` gives (2^53-1)/2^53; property test `0 <= x < 1`); `newMutationId` output matches `[A-Za-z0-9_.:-]{1,128}`.
 
-- [ ] **T1.A3 Ops, vectors and ordering [MVP]**
+- [x] **T1.A3 Ops, vectors and ordering [MVP]**
   - Owner: Core engine.
   - Paths: `packages/core/src/ops/**` (all files except `random.ts`), `packages/core/test/ops/**`.
   - Depends: T1.A1, **T1.A2** (replica and record ID generation use `Random`). Req: D1 to D4, R2.1 to R2.3, R2.7, design 3.1 to 3.3.
@@ -182,7 +182,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 ### Lane B: resolvers, state derivation and histories (Conflict resolution owner)
 
-- [ ] **T1.B1 Built-in resolvers [MVP]**
+- [x] **T1.B1 Built-in resolvers [MVP]**
   - Owner: Conflict resolution.
   - Paths: `packages/core/src/resolvers/**`, `packages/core/test/resolvers/**`.
   - Depends: T0.3. Req: R6.3 to R6.6, design 5.2.
@@ -212,21 +212,21 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 ### Lane C: storage adapters (Storage and data owner)
 
-- [ ] **T1.C1 Memory adapter and conformance suite [MVP]**
+- [x] **T1.C1 Memory adapter and conformance suite [MVP]**
   - Owner: Storage and data.
   - Paths: `packages/storage/src/memory/**`, `packages/storage/test/memory/**`, `packages/testing/src/storage/**`.
   - Depends: T0.3. Req: R9.1, R9.3, design 9, 9.2.
   - Implement the memory adapter, `runStorageConformance(factory)` (atomicity including aborted transactions, durability across reopen, scan order and prefixes, snapshot reads, large batches, serialized transactions), and `crashingStorage(wrapped, { failAfterWrites, failAfterCommit })`.
   - Done when: the memory adapter passes the suite.
 
-- [ ] **T1.C2 File adapter: journal, snapshot, scan [MVP]**
+- [x] **T1.C2 File adapter: journal, snapshot, scan [MVP]**
   - Owner: Storage and data.
   - Paths: `packages/storage/src/file/journal.ts`, `packages/storage/src/file/snapshot.ts`, `packages/storage/src/file/manifest.ts`, `packages/storage/src/file/index.ts`, `packages/storage/test/file/journal*.test.ts`, `packages/storage/test/file/rotation*.test.ts`.
   - Depends: T1.C1. Req: R9.6, R10.4, design 9.1.
   - Implement the 32-byte header with `headerCheck`, the SHA-256 trailer, generations and `MANIFEST` with epoch, the read-only scan D1 to D6, the decision procedure, the no-write rule, the ordered writes of open step 5, rotation with six failpoints, and the narrow `onCorruptTail: { truncateAt }` option.
   - Done when: every journal and rotation test of design 9.1 passes: cuts at every byte offset (1 to 31 fail closed with `partial-header`, 32 onward truncated), the length corrupted in all five forms, damage to payload, trailer, header, magic, epoch and txId, mid-log damage, zero-filled tail, byte-for-byte preservation of data files on every failed open, operator truncation accepted and refused cases, rotation failpoints, an old journal beside a newer snapshot, repeated restarts.
 
-- [ ] **T1.C3 File adapter: locking, recovery guard, manual recovery [MVP]**
+- [x] **T1.C3 File adapter: locking, recovery guard, manual recovery [MVP]**
   - Owner: Storage and data.
   - Paths: `packages/storage/src/file/lock.ts`, `packages/storage/src/file/hostid.ts`, `packages/storage/test/file/lock*.test.ts`, `packages/storage/test/file/recovery*.test.ts`.
   - Depends: T1.C2. Req: R9.6(d) to (f), R15.17, R15.20, design 9.1 (locking).
@@ -242,13 +242,13 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 ### Lane D: sync engine and transports (Synchronization owner)
 
-- [ ] **T1.D1 Retry policy and `withRetry` [MVP]**
+- [x] **T1.D1 Retry policy and `withRetry` [MVP]**
   - Owner: Synchronization.
   - Paths: `packages/core/src/sync/retry.ts`, `packages/core/test/sync/retry*.test.ts`.
   - Depends: T0.3, T1.A2. Req: R10.2, R10.3, R15.21, design 8.4.
   - Done when: seeded-random tests (using the generator from T1.F1 or a local stub of the same `Random` shape) assert exact delay sequences including the cap; stubbed minimum and maximum `randomFloat` give 0 and just under `min(cap, base * 2^n)`; retryable and non-retryable classification works; a static check shows no `Math.random`.
 
-- [ ] **T1.D2 Schema-aware prefix selection [MVP]**
+- [x] **T1.D2 Schema-aware prefix selection [MVP]**
   - Owner: Synchronization.
   - Paths: `packages/core/src/sync/select.ts`, `packages/core/test/sync/select*.test.ts`.
   - Depends: T0.3. Req: R4.6, R4.10, design 8.3.

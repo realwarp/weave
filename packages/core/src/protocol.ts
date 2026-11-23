@@ -35,6 +35,7 @@ export { compareUtf8, encodeCanonical, sha256Hex, toCanonical } from './canonica
 export {
   DEFAULT_MAX_OP_BYTES,
   REPLICA_ID_PATTERN,
+  buildOp,
   mergeVectors,
   minVectors,
   newReplicaId,
