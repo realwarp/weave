@@ -17,6 +17,7 @@ import {
   type InferRecord,
   type Replica,
   type SyncEndpoint,
+  type StorageAdapter,
   type SyncResult,
 } from '@weave/core';
 import { createMemoryBacking, memoryStorage, type MemoryBacking } from '@weave/storage/memory';
@@ -76,6 +77,11 @@ export interface SimulatorOptions {
   readonly wallTime?: (step: number, replica: number) => number;
   /** Maximum records written per replica before writes only update or delete (default 6). */
   readonly maxRecords?: number;
+  /**
+   * Storage for replica `name`, called on every (re)open. Default: memory storage over the
+   * replica's `backing`. With custom storage, `opLines` is unavailable.
+   */
+  readonly storage?: (name: string) => StorageAdapter;
 }
 
 export interface SimReplica {
@@ -131,7 +137,7 @@ export async function createSimulator(options: SimulatorOptions): Promise<Simula
     upgraded: boolean,
   ) =>
     createReplica({
-      storage: memoryStorage({ backing: sim.backing }),
+      storage: options.storage?.(sim.name) ?? memoryStorage({ backing: sim.backing }),
       collections: [upgraded ? simNotesV2 : simNotesV1],
       random: seededRandom(`sim:${String(options.seed)}:${sim.name}:${opened++}`),
       clock: sim.clock,
@@ -278,6 +284,7 @@ export async function createSimulator(options: SimulatorOptions): Promise<Simula
   }
 
   function opLines(index: number): string[] {
+    if (options.storage !== undefined) throw new Error('opLines needs the default memory storage');
     const store = replicas[index]!.backing.store;
     return store.keysFrom('op/').map((k) => store.get(k)!);
   }

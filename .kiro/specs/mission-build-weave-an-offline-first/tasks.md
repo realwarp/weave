@@ -331,7 +331,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Depends: Gate 1. Req: R15.1 to R15.4, R15.8.
   - Done when: every test listed under lanes A and B passes and each owner records the coverage figures in its package README; no feature is marked complete without a test.
 
-- [ ] **T2.2 File adapter in the engine [MVP]**
+- [x] **T2.2 File adapter in the engine [MVP]**
   - Owner: Testing and QA, with defects fixed by Storage and data in `packages/storage/**`.
   - Paths: `tests/integration/file-adapter/**`.
   - Depends: T1.C2, T1.C3, T1.A6, T1.F2. Req: R9.3, R10.4, R15.17.
