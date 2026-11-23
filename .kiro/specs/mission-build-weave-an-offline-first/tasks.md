@@ -423,7 +423,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 ### Shared app checks
 
-- [ ] **T3.X1 Boundary and difference checks [MVP]**
+- [x] **T3.X1 Boundary and difference checks [MVP]**
   - Owner: Security and release for scripts and fixtures; Developer experience and documentation for the generated table file.
   - Paths: `scripts/check-boundaries.mjs`, `scripts/gen-differences.mjs`, `scripts/fixtures/**` (Security and release); `docs/app-differences.md` (Developer experience and documentation).
   - Depends: T3.G1, T3.F1, T0.5. Req: R14a.1, R14a.3.

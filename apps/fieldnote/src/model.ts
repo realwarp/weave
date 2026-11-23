@@ -11,9 +11,13 @@ export const inspectionsV1 = defineCollection({
   name: 'inspections',
   version: 1,
   fields: {
+    /** @demo v1-work */
     title: f.string({ required: true, resolver: 'last-writer-wins' }),
+    /** @demo upgrade */
     location: f.string({ resolver: 'last-writer-wins' }),
+    /** @demo v1-work */
     status: f.rank(STATUS, { required: true }),
+    /** @demo v1-work */
     assignees: f.set(f.string()),
   },
 });
@@ -30,10 +34,15 @@ export const inspectionsV2 = defineCollection({
   name: 'inspections',
   version: 2,
   fields: {
+    /** @demo result */
     title: f.string({ required: true, resolver: 'last-writer-wins' }),
+    /** @demo upgrade */
     site: f.string({ resolver: 'last-writer-wins' }),
+    /** @demo result */
     zone: f.string({ resolver: 'last-writer-wins' }),
+    /** @demo result */
     status: f.rank(STATUS, { required: true }),
+    /** @demo result */
     assignees: f.set(f.string()),
   },
   migrations: {
@@ -49,10 +58,16 @@ export const observations = defineCollection({
   name: 'observations',
   version: 1,
   fields: {
+    /** @demo v1-work */
     inspectionId: f.string({ required: true }),
+    /** @demo replay */
     note: f.string({ resolver: 'last-writer-wins' }),
-    /** 1 (minor) to 5 (critical); concurrent values resolve to the higher one. */
+    /**
+     * 1 (minor) to 5 (critical); concurrent values resolve to the higher one.
+     * @demo result
+     */
     severity: f.number({ required: true, resolver: 'max' }),
+    /** @demo result */
     reading: f.number({ resolver: 'last-writer-wins' }),
   },
 });

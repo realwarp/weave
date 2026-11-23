@@ -21,6 +21,8 @@ describe('boundary checks (T0.5)', () => {
     expect(text).toContain('app imports outside itself');
     expect(text).toContain('app imports into packages/');
     expect(text).toContain('forbidden sync identifier "lamport"');
+    expect(text).toContain('forbidden sync identifier "sha256"');
+    expect(text).toContain('forbidden sync identifier "versionVector"');
     expect(text).toContain('app imports an internal module: @weave/core/engine');
   });
 

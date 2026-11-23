@@ -7,3 +7,4 @@ package-lock.json
 docs/api
 tests/quickstart/.generated/
 coverage/
+docs/app-differences.md
