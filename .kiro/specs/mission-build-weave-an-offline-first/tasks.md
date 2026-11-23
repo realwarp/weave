@@ -398,7 +398,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Collections `announcements` and `requests` with the resolvers of design 13.1; each user action gets one `mutationId` stored with the pending action before the call.
   - Done when: logic tests cover offline create, publish, claim conflict, tag union, delete versus edit, and a retry with the same `mutationId` returning `replayed`.
 
-- [ ] **T3.G2 GHOSTLINE UI and scripts [MVP]**
+- [x] **T3.G2 GHOSTLINE UI and scripts [MVP]**
   - Owner: GHOSTLINE.
   - Paths: `apps/ghostline/index.html`, `apps/ghostline/vite.config.ts`, `apps/ghostline/package.json`, `apps/ghostline/tsconfig.json`, `apps/ghostline/src/app.ts`, `apps/ghostline/src/demo.ts`, `apps/ghostline/test/e2e/**`, `apps/ghostline/README.md`.
   - Depends: T3.G1, T2.3, T1.C4, T1.D5. Req: R13.5, R13.6, R14a, design 13.
