@@ -93,6 +93,7 @@ authorization hook, peer bans, the WebSocket transport.
 - [Custom transport](docs/guides/custom-transport.md)
 - [Custom resolvers](docs/guides/custom-resolver.md)
 - [Migrations](docs/guides/migrations.md)
+- [Storage recovery](docs/guides/storage-recovery.md)
 
 ## License
 

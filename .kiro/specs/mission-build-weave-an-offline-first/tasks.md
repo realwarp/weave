@@ -445,7 +445,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Depends: Gate 2. Req: R17.2, design 16.
   - Done when: every ADR listed in design 16 exists with context, options, decision and consequences, including ADR-0006 (with the compaction trust assumption), ADR-0007 (acknowledgement rules), ADR-0008 (all-or-nothing validation), ADR-0009 (journal format), ADR-0014 (`mutationId`).
 
-- [ ] **T4.2 Guides, including storage recovery [MVP]**
+- [x] **T4.2 Guides, including storage recovery [MVP]**
   - Owner: Developer experience and documentation.
   - Paths: `docs/guides/custom-storage.md`, `docs/guides/custom-transport.md`, `docs/guides/custom-resolver.md`, `docs/guides/migrations.md`, `docs/guides/storage-recovery.md`.
   - Depends: Gate 2, T1.G1. Req: R18.3, R9.6(f).
