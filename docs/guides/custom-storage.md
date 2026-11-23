@@ -1,87 +1,50 @@
 # Custom storage adapter
 
-WEAVE's storage layer is an adapter interface. You can implement a custom adapter to store ops and state in any backend that supports atomic transactions and key-value scans.
+A storage adapter gives WEAVE an ordered key-value store with atomic transactions. The contract is
+in `packages/core/src/contracts/storage.ts`.
 
-## StorageAdapter and StorageTx interfaces
+## The interface
 
 ```ts
 interface StorageAdapter {
-  open(): Promise<StorageTx>;
+  open(): Promise<void>;
   close(): Promise<void>;
-  name: string;
+  transaction<T>(mode: 'ro' | 'rw', fn: (tx: StorageTx) => Promise<T>): Promise<T>;
 }
 
 interface StorageTx {
   get(key: string): Promise<string | undefined>;
-  getMany(keys: string[]): Promise<(string | undefined)[]>;
-  scan(prefix: string): AsyncIterable<[string, string]>;
-  put(key: string, value: string): Promise<void>;
-  delete(key: string): Promise<void>;
-  commit(): Promise<void>;
-  rollback(): Promise<void>;
+  put(key: string, value: string): void;
+  delete(key: string): void;
+  scan(prefix: string, options?: { after?: string; limit?: number }): Promise<Array<[string, string]>>;
 }
 ```
 
-## Atomicity and durability
+## Rules
 
-- Every write (`put`, `delete`) is buffered and only committed on `commit()`.
-- `rollback()` discards all buffered changes since the last commit.
-- A transaction must be atomic: either all changes persist or none do.
-- On `commit()`, all writes must be durable before returning.
+- A `rw` transaction is atomic: when `fn` throws, nothing is written. When `transaction`
+  resolves, every write is durable.
+- Transactions are serialized. A transaction sees its own writes and a stable snapshot of the
+  rest.
+- Keys are ASCII. `scan` returns keys that start with `prefix`, in ascending byte order, strictly
+  after `after` when it is given, and at most `limit` entries.
+- `fn` may only await calls on `tx`. IndexedDB closes a transaction that waits on anything else.
+- A second `open` of storage that is already open elsewhere fails with `STORAGE_LOCKED`.
 
-## Scan ordering
+The engine owns the key layout (`keys` in the contract file). An adapter never interprets values.
 
-- `scan(prefix)` must return entries in ascending key order.
-- For a given prefix, keys must be returned in byte-wise (UTF-8) order.
-- The adapter may support multi-key scans by using a prefix that covers the desired range.
+## Conformance
 
-## Key layout
-
-See `design.md` section 3.4 and `packages/core/src/contracts/storage.ts`:
-
-| Key | Value | Purpose |
-|---|---|---|
-| `meta/replica` | `{replicaId}` | identity |
-| `meta/state` | `{vector, maxLamport, commit}` | version vector and Lamport max |
-| `meta/schema` | `{collection: version}` | schema version |
-| `op/<origin>/<seq:12 digits>` | op line | the op log (accepted ops only) |
-| `rop/<collection>/<recordId>/<origin>/<seq:12>` | `""` | per-record op index |
-| `rec/<collection>/<recordId>` | `DerivedRecord` JSON | materialized state |
-| `mut/<mutationId>` | `MutationRecord` JSON | idempotency key |
-| `pend/<origin>/<seq:12>` | op line | pending buffer for sequence gaps |
-| `peer/<peerId>` | `PeerEntry` | peer registry and acknowledgements |
-| `notified/<conflictId>` | `""` | live-notification marks |
-
-## Running the conformance suite
+`@weave/testing` runs the same suite that the built-in adapters pass:
 
 ```ts
 import { runStorageConformance } from '@weave/testing';
-import { MyStorageAdapter } from './my-adapter';
 
-const factory = () => new MyStorageAdapter('test-db');
-runStorageConformance(factory);
+runStorageConformance('my adapter', async () => {
+  const adapter = createMyAdapter({ path: freshPath() });
+  return { adapter, reopen: async () => createMyAdapter({ path: samePath }) };
+});
 ```
 
-The conformance suite checks:
-
-- Atomicity (rollback discards writes)
-- Durability (data survives reopen)
-- Scan ordering and prefix filtering
-- Snapshot reads (reads reflect the state at transaction start)
-- Large batches
-- Serialized transactions (concurrent transactions don't interleave)
-
-## IndexedDB constraints
-
-IndexedDB transactions must only `await` `tx` calls:
-
-```ts
-// Correct
-await tx.store.put(record);
-
-// Incorrect
-await someOtherPromise();
-await tx.store.put(record);
-```
-
-Enforced by ESLint in `packages/storage/src/indexeddb/**`.
+It covers atomicity (including aborted transactions), durability across reopen, scan order and
+prefixes, snapshot reads, large batches and concurrent transaction serialization.

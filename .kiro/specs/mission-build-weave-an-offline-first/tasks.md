@@ -309,7 +309,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 ### Lane G: documentation
 
-- [ ] **T1.G1 README skeletons and quick start [MVP]**
+- [x] **T1.G1 README skeletons and quick start [MVP]**
   - Owner: Developer experience and documentation.
   - Paths: `README.md`, `CHANGELOG.md`, `docs/guides/custom-storage.md`, `docs/guides/custom-transport.md`, `docs/guides/custom-resolver.md`, `docs/guides/migrations.md`.
   - Depends: T0.3. Req: R11.2, R18.1 to R18.3.

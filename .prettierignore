@@ -5,3 +5,4 @@ package-lock.json
 *.md
 .kiro
 docs/api
+tests/quickstart/.generated/

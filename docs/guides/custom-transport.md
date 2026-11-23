@@ -1,74 +1,46 @@
 # Custom transport
 
-A transport adapts WEAVE's sync protocol to a specific network protocol. The core sends and receives batches of ops using a `SyncEndpoint` interface.
+A transport carries the sync protocol between a replica and an endpoint. It implements
+`SyncEndpoint` from `@weave/core/protocol` and forwards each call unchanged.
 
-## SyncEndpoint interface
+## The interface
 
 ```ts
 interface SyncEndpoint {
-  pull(request: {
-    fromVector: VersionVector;
-    support: Record<string, number> | '*';
-    maxRounds: number;
-  }): Promise<{
-    status: 'complete' | 'partial' | 'failed';
-    ops: Op[];
-    ackVector: VersionVector;
-  }>;
-
-  push(request: {
-    ops: Op[];
-    support: Record<string, number> | '*';
-  }): Promise<{
-    status: 'complete' | 'partial' | 'failed';
-    rejectedOrigins?: { origin: string; code: string }[];
-    promoted?: number;
-  }>;
-
-  ack(request: {
-    ackVector: VersionVector;
-  }): Promise<void>;
+  pull(request: PullRequest): Promise<PullResponse>;
+  push(request: PushRequest): Promise<PushResponse>;
+  ack(request: AckRequest): Promise<void>;
 }
 ```
 
-## What `vector` versus `durable` mean
+- `pull({ replicaId, vector, support, limit, origins? })` returns the ops beyond `vector` that the
+  caller can read, as canonical op lines, plus the endpoint's `durable` vector. `limit: 0` is a pure
+  vector exchange; the sync engine uses it to check that both sides hold the same ops.
+- `push({ replicaId, support, ops })` sends op lines. The engine sends one origin per request. The
+  response has the endpoint's `durable` vector, `need` (the first missing `seq` per origin) and any
+  rejections.
+- `ack({ replicaId, durable })` reports what the caller has committed after a pull.
 
-- `vector`: the version vector a party claims to hold. This is **advisory** and not verified cryptographically.
-- `durable`: the version vector that has been written to durable storage. This is the **authoritative** truth.
+Op lines are opaque strings to a transport. Never parse, re-encode or reorder them: the endpoint
+checks their hashes and canonical form.
 
-The sync protocol verifies a "stable double read" to ensure the durable vectors match before declaring a sync complete.
+## Errors
 
-## One origin per push
+Throw a `WeaveError` with code `TRANSPORT_ERROR`. Set `retryable: true` for timeouts, dropped
+connections, HTTP 5xx and 429; set it to `false` for authentication failures and other permanent
+errors. When the remote side returns a WEAVE error code (for example `INTEGRITY_CONFLICT`), throw
+that code so the sync engine can react to it.
 
-The push loop sends **one origin's ops per request**. If a batch from origin X is rejected, the entire batch is discarded, and the next push from X is retried. Origins whose batches fail are listed in `rejectedOrigins`.
-
-## Limit 0
-
-If `limit: 0` is specified, no ops are transferred. This is used for the final verification round to confirm both parties hold the same ops.
-
-## Error mapping and retryable
-
-Errors are classified as:
-
-- **Retryable:** network transient, temporary overload
-- **Non-retryable:** permanent failure (e.g., auth error, unsupported schema)
-
-The sync engine retries retryable errors with exponential backoff up to a configurable max.
-
-Run the conformance suite:
+## Conformance
 
 ```ts
 import { runTransportConformance } from '@weave/testing';
-import { MyTransportEndpoint } from './my-transport';
 
-const endpoint = () => new MyTransportEndpoint();
-runTransportConformance(endpoint);
+runTransportConformance('my transport', async () => {
+  const server = await startTestRelay();
+  return { endpoint: myTransport({ url: server.url }), close: server.close };
+});
 ```
 
-The suite verifies:
-
-- Batch transfer (ops are received exactly once)
-- Idempotency (duplicate ops are handled correctly)
-- Error handling (rejection propagates to `rejectedOrigins`)
-- Vector exchange (version vectors are accurate)
-- Schema-aware delivery (ops beyond supported schema are blocked)
+The factory returns a fresh, empty endpoint as seen through the transport. The suite uses real,
+hashed ops, so it also runs against the relay.

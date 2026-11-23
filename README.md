@@ -4,14 +4,21 @@ An offline-first application foundation.
 
 Independent devices and records → exchanged changes → reconciled shared state.
 
-WEAVE is a reusable TypeScript library for building offline-first applications. Devices keep working with no connection, record changes independently, exchange those changes later, and end up with the same shared state.
+WEAVE is a reusable TypeScript library for offline-first applications. Each device keeps working
+with no connection and records every change as an immutable, hash-protected operation. Devices
+exchange those operations later, directly or through a relay, and end up with the same state.
+State is a pure function of the accepted operation set, so arrival order and wall clocks never
+change the result.
 
 ## Install
 
-- Node.js 22+
-- `npm ci`
-- `npm run build`
-- `npm test`
+Node.js 22 or later.
+
+```sh
+npm ci
+npm run build
+npm test
+```
 
 ## Quick start
 
@@ -19,95 +26,68 @@ WEAVE is a reusable TypeScript library for building offline-first applications. 
 import { createReplica, defineCollection, f } from '@weave/core';
 import { memoryStorage } from '@weave/storage/memory';
 
-// Define a collection schema
-const requests = defineCollection({
-  name: 'requests',
+const notes = defineCollection({
+  name: 'notes',
   version: 1,
   fields: {
-    title:     f.string({ required: true }),
-    details:   f.string(),
-    tags:      f.set(f.string()),
-    claimedBy: f.string({ resolver: 'last-writer-wins' }),
-    state:     f.rank(['open', 'fulfilled'], { required: true }),
+    title: f.string({ required: true }),
+    tags: f.set(f.string()),
+    status: f.rank(['open', 'done']),
   },
 });
 
-// Create a replica with in-memory storage
-const replica = await createReplica({
-  storage: memoryStorage('my-replica'),
-  collections: [requests],
-});
+const a = await createReplica({ storage: memoryStorage(), collections: [notes] });
+const b = await createReplica({ storage: memoryStorage(), collections: [notes] });
 
-// Write a record
-const mutationId = replica.newMutationId();
-await replica.collection(requests).create(
-  { title: 'Fix leak', details: 'Kitchen sink', tags: ['urgent'], state: 'open' },
-  { mutationId }
-);
+// One mutationId per user intent: store it with the intent and reuse it on every retry.
+const { recordId } = await a
+  .collection(notes)
+  .create({ title: 'Fix the gate', tags: ['urgent'], status: 'open' }, { mutationId: a.newMutationId() });
 
-// Sync with another replica
-const b = await createReplica({
-  storage: memoryStorage('another-replica'),
-  collections: [requests],
-});
-
-await b.sync(a.endpoint());
-
-// Read the record
-const record = await b.collection(requests).get(mutationId);
-console.log(record?.data);
-// { title: 'Fix leak', details: 'Kitchen sink', tags: ['urgent'], state: 'open' }
-
-// Get hashes for verification
-const hashes = await replica.hashes();
-console.log(hashes);
-// { state: 'abc...', 'opSet': 'def...', 'conflictView': 'ghi...' }
+const result = await b.sync(a.endpoint());
+console.log(result.status); // 'complete'
+console.log((await b.collection(notes).get(recordId))?.value.title); // 'Fix the gate'
+console.log(JSON.stringify(await a.hashes()) === JSON.stringify(await b.hashes())); // true
 ```
 
-## Architecture
+To sync through a relay instead, start `weave-relay --data ./relay-data --port 8787` and pass
+`httpTransport({ baseUrl: 'http://127.0.0.1:8787' })` from `@weave/transport/http` to `sync`.
 
-- **Operation log:** Every write becomes one immutable, hash-protected op.
-- **State derivation:** State is computed purely from the accepted op set.
-- **Version vectors:** Replicas exchange ops using version vectors.
-- **Pure resolvers:** Concurrent edits are merged by deterministic rules.
-- **Adapters:** Storage and transport are pluggable.
+## How it works
 
-See `docs/architecture.md` for a longer overview and `docs/adr/` for design decisions.
+- **Operation log.** Every write becomes one immutable op with a SHA-256 hash over its canonical
+  encoding.
+- **Version vectors.** Replicas exchange exactly the ops the other side lacks.
+- **Deterministic resolvers.** Concurrent edits to one field merge by fixed rules
+  (`last-writer-wins` by Lamport order, `max`, `min`, `set-union`, `max-rank`). Conflicts stay
+  visible through `replica.conflicts`.
+- **Schema versions.** Old ops are upgraded on read; a peer never receives ops it cannot read.
+- **Adapters.** Storage (memory, file, IndexedDB) and transport (in-process, HTTP) are pluggable.
+
+See `docs/architecture.md` and `docs/adr/`.
 
 ## Packages
 
-| Package | Description |
-|---|---|
-| `@weave/core` | Engine, schema, resolvers, canonical codec, sync engine |
-| `@weave/storage` | Memory, file, IndexedDB adapters |
-| `@weave/transport` | In-process and HTTP transports |
-| `@weave/relay` | Store-and-forward relay server |
-| `@weave/testing` | Conformance suites, simulators, generators (dev only) |
-
-## Applications
-
-- **GHOSTLINE:** Community coordination (announcements, requests, local information).
-- **FIELDNOTE:** Field operations (inspection records, observations, concurrent edits).
-
-Both are in progress.
+| Package            | Contents                                                        |
+| ------------------ | --------------------------------------------------------------- |
+| `@weave/core`      | Engine, schema, resolvers, canonical encoding, sync engine      |
+| `@weave/storage`   | Memory, file (Node.js) and IndexedDB (browser) adapters         |
+| `@weave/transport` | In-process and HTTP client transports                           |
+| `@weave/relay`     | Store-and-forward relay server and `weave-relay` CLI            |
+| `@weave/testing`   | Conformance suites, simulator, fault injection (dev only)       |
 
 ## Status
 
-### Implemented
+Built and tested: the core engine, memory and file storage, both transports, the relay, the
+simulator and the cross-package property suites.
 
-- Core engine: ops, canonical encoding, hashing, schema definitions, resolvers, state derivation, replica open/write/read
-- Storage adapters: memory, file (journal), IndexedDB
-- Transport: in-process, HTTP client
-- Sync engine: version vector exchange, batch transfer, retry, pending buffer, schema-aware delivery
-- Testing tools: conformance suites, fault injection, generators
+Built but not yet verified in a browser: the IndexedDB adapter.
 
-### Not yet implemented (MVP future work)
+Not built yet: the GHOSTLINE and FIELDNOTE applications.
 
-- Relay server
-- Compaction
-- Snapshot bootstrap
-- Full GHOSTLINE app
-- Full FIELDNOTE app
+Not implemented ([ADV] features): compaction and `removePeer`, snapshot bootstrap, `restore` and
+`update-wins`, the counter resolver and custom resolvers, holding newer-schema ops, the
+authorization hook, peer bans, the WebSocket transport.
 
 ## Guides
 

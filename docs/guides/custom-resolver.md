@@ -1,58 +1,48 @@
-# Custom resolvers
+# Resolvers
 
-Resolvers merge concurrent edits to a field by deterministically selecting one value from the field's frontier.
-
-## What resolvers are
-
-A resolver is a pure function that takes a field's frontier (the set of ops that set that field and are not causally followed by any other op setting it) and returns a single value.
+A resolver decides the value of a field when concurrent ops set it. Its input is the field's
+frontier: the ops that set the field and that no later op on the field causally follows.
 
 ```ts
-interface FrontierEntry<V = JsonValue> {
-  opId: OpId;
+interface FrontierEntry<V> {
+  opId: { replicaId: string; seq: number };
   lamport: number;
   replicaId: string;
   seq: number;
   value: V;
 }
 
-type Resolver<V = JsonValue> = (
-  entries: readonly FrontierEntry<V>[],
-  ctx: { rankMap?: readonly V[] }
-) => V;
+type Resolver<V> = (entries: readonly FrontierEntry<V>[], context: { rankMap?: readonly V[] }) => V;
 ```
 
-## Purity contract
-
-- **Deterministic:** same frontier → same value, regardless of array order
-- **Idempotent:** applying it twice yields the same result
-- **Stateless:** no external dependencies, no randomness
-
-Built-in resolvers ignore entry position entirely.
+A resolver must be a pure function of the entries as a set. It must not depend on their array
+order, the wall clock, randomness or any outside state. Every replica then picks the same value.
 
 ## Built-in resolvers
 
-| Resolver | Rule |
-|---|---|
-| `last-writer-wins` | greatest `(lamport, replicaId, seq)` by D4 order |
-| `max` | numeric/string comparison for numbers/strings |
-| `min` | numeric/string comparison for numbers/strings |
-| `set-union` | union of arrays, dedupe by canonical encoding, sort by UTF-8 encoding |
-| `max-rank` | highest index in `rankMap` (schema guarantees distinct values) |
-
-Custom resolvers are **[ADV]** and not implemented in the MVP. The registry accepts them but `defineCollection` only enables built-in names in the MVP.
-
-## How built-ins are declared per field
+| Resolver           | Rule                                                                 | Declared by                       |
+| ------------------ | -------------------------------------------------------------------- | --------------------------------- |
+| `last-writer-wins` | the entry with the greatest `(lamport, replicaId, seq)`              | default for `string`, `number`, `boolean`, `json` |
+| `max`, `min`       | the greatest or smallest value                                        | `f.number({ resolver: 'max' })`, `f.string({ resolver: 'min' })` |
+| `set-union`        | the union of all arrays, without duplicates, sorted                   | `f.set(element)`                  |
+| `max-rank`         | the value latest in the field's rank list                             | `f.rank(['open', 'done'])`        |
 
 ```ts
 const requests = defineCollection({
   name: 'requests',
   version: 1,
   fields: {
-    title: f.string({ resolver: 'last-writer-wins' }),
+    title: f.string({ required: true }),
+    priority: f.number({ resolver: 'max' }),
     tags: f.set(f.string()),
-    state: f.rank(['open', 'fulfilled'], { resolver: 'max-rank' }),
+    state: f.rank(['open', 'claimed', 'fulfilled']),
   },
 });
 ```
 
-Each field's builder accepts a `resolver` option that defaults to `last-writer-wins` for primitive types and the appropriate built-in for `set` and `rank`.
+A resolved conflict stays visible: `replica.conflicts.current()` lists open conflicts with their
+frontier values, and `replica.conflicts.history()` keeps superseded ones.
+
+## Custom resolvers
+
+Not implemented. Custom resolvers and the `counter` resolver are [ADV] features (task T5.4).
