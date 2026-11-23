@@ -5,6 +5,7 @@
 //
 // Each result is printed. The script exits non-zero only past 3x a target, so noisy CI runners do
 // not cause false failures.
+import { performance } from 'node:perf_hooks';
 import { createReplica, defineCollection, f } from '@weave/core';
 import { buildOp } from '@weave/core/protocol';
 import { memoryStorage } from '@weave/storage/memory';
