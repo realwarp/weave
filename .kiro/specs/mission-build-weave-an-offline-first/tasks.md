@@ -261,14 +261,14 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Implement the pull loop with per-origin isolation retry, `ack` after commit, the push loop with **one origin per request** and per-origin rejection handling, the **stable double read** (`L_start`, `E`, `L_end`) with `maxRounds` and `NOT_SETTLED`, `SyncResult` (`complete`, `partial`, `failed`, `blocked`, `rejectedOrigins`, `promoted`, `settled`), peer registry updates, `replica.endpoint()`, and the sync events (`sync.start`, `batch.sent`, `batch.received`, `retry`, `error`).
   - Done when: scenario tests of design 12.3 pass (interrupted sync, bounded batches, the verification-baseline cases a to d, push-side isolation, R15.11 end to end); `status().state` moves `idle` to `syncing` to `idle` or `failed`; `lastResult` and per-peer `ackVector` are correct after live syncs; **`lastSyncWall` is written only by a `complete` sync**: a test runs a complete sync (timestamp T1 recorded from the fake clock), then a `partial` sync (`PEER_SCHEMA_OLDER`), a `partial` sync (`NOT_SETTLED`) and a `failed` sync, and shows that `lastSyncWall` still equals T1 while `lastResult` shows each newer result, and that a later complete sync moves it to the new time; every sync event has a test with a custom logger; **type-level tests** show that the `SyncResult` union of design 7.1 rejects a `partial` result without a `code`, a `PEER_SCHEMA_OLDER` result with an empty `blocked` list, and a `NOT_SETTLED` result with blocked origins, and runtime tests produce `NOT_SETTLED` (a hook that changes the endpoint every round) and `PEER_SCHEMA_OLDER` with the documented fields and priority (`failed` over `PEER_SCHEMA_OLDER` over `NOT_SETTLED`).
 
-- [ ] **T1.D4 In-process transport and fault-injecting endpoint [MVP]**
+- [x] **T1.D4 In-process transport and fault-injecting endpoint [MVP]**
   - Owner: Synchronization.
   - Paths: `packages/transport/src/in-process/**`, `packages/transport/test/in-process/**`, `packages/testing/src/transport/**`.
   - Depends: T0.3. Req: R9.2, R9.3, design 8.1.
   - Implement the in-process endpoint wrapper, `FaultyEndpoint` (seeded drop, duplicate, reorder, delay, truncate, hook points), and `runTransportConformance`.
   - Done when: the in-process transport passes the transport suite.
 
-- [ ] **T1.D5 HTTP transport client [MVP]**
+- [x] **T1.D5 HTTP transport client [MVP]**
   - Owner: Synchronization.
   - Paths: `packages/transport/src/http/**`, `packages/transport/test/http/**`.
   - Depends: T0.3, T1.D4. Req: R9.2, R4a.1, R4a.10, design 8.1, 10.1.

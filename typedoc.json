@@ -1,0 +1,24 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "packages/core/src/index.ts",
+    "packages/core/src/protocol.ts",
+    "packages/storage/src/memory/index.ts",
+    "packages/storage/src/file/index.ts",
+    "packages/storage/src/indexeddb/index.ts",
+    "packages/transport/src/in-process/index.ts",
+    "packages/transport/src/http/index.ts"
+  ],
+  "tsconfig": "tsconfig.docs.json",
+  "out": "docs/api",
+  "name": "WEAVE API",
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "treatWarningsAsErrors": false,
+  "validation": {
+    "notExported": false,
+    "invalidLink": true,
+    "notDocumented": false
+  },
+  "disableSources": true
+}
