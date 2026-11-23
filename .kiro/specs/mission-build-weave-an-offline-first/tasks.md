@@ -337,7 +337,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Depends: T1.C2, T1.C3, T1.A6, T1.F2. Req: R9.3, R10.4, R15.17.
   - Done when: the full property and scenario suites also run against the file adapter, and crash-recovery tests with a killed child process pass with each operating system's expected behavior (Linux: takeover; Windows and macOS: `STORAGE_LOCKED`, then the documented manual recovery).
 
-- [ ] **T2.3 Relay end to end [MVP]**
+- [x] **T2.3 Relay end to end [MVP]**
   - Owner: Testing and QA, with defects fixed by Relay in `packages/relay/**` and Synchronization in `packages/transport/**`.
   - Paths: `tests/relay/**`.
   - Depends: T1.D5, T1.E2, T1.F1. Req: R4a.10, R15.1, R15.4, R15.11, R15.16, R15.18.

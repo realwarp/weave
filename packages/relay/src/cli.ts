@@ -38,3 +38,8 @@ const stop = (): void => {
 };
 process.on('SIGINT', stop);
 process.on('SIGTERM', stop);
+// Windows cannot deliver SIGTERM to a child: process managers send a 'shutdown' IPC message instead.
+process.on('message', (message) => {
+  if (message === 'shutdown') stop();
+});
+if (process.channel !== undefined) process.channel.unref();

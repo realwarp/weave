@@ -19,7 +19,10 @@ weave-relay --data ./relay-data --port 8787 [--host 127.0.0.1]
 
 When `WEAVE_RELAY_TOKEN` is set, every data route needs `Authorization: Bearer <token>`. The token is
 compared in constant time and is never logged. The relay binds to `127.0.0.1` unless you pass
-another host. `SIGINT` and `SIGTERM` close the server and the data directory cleanly.
+another host. `SIGINT` and `SIGTERM` close the server and the data directory cleanly. On Windows,
+where a parent process cannot deliver `SIGTERM`, send the IPC message `'shutdown'` instead (the
+convention process managers use). A relay that is killed outright leaves its lock behind; on
+Windows and macOS, follow `docs/guides/storage-recovery.md` before restarting it.
 
 ## Routes
 
