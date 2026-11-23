@@ -10,11 +10,15 @@ import { timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import {
+  REPLICA_ID_PATTERN,
+  WeaveError,
   isWeaveError,
   systemScheduler,
   type AckRequest,
   type PullRequest,
   type Scheduler,
+  type Support,
+  type VersionVector,
 } from '@weave/core/protocol';
 import { decodePushRequest, encodePullResponse } from '@weave/transport/http';
 import type { RelayCore } from '../core/index.js';
@@ -82,6 +86,64 @@ function parseJson(body: string): Record<string, unknown> {
   return parsed;
 }
 
+function invalid(message: string): WeaveError {
+  return new WeaveError('VALIDATION_FAILED', message);
+}
+
+const isCount = (v: unknown, min: number): v is number =>
+  typeof v === 'number' && Number.isSafeInteger(v) && v >= min;
+
+function replicaId(v: unknown, what: string): string {
+  if (typeof v !== 'string' || !REPLICA_ID_PATTERN.test(v))
+    throw invalid(`${what} must be a replica ID`);
+  return v;
+}
+
+function vector(v: unknown, what: string): VersionVector {
+  if (!isObject(v)) throw invalid(`${what} must be an object`);
+  for (const [id, seq] of Object.entries(v)) {
+    replicaId(id, `${what} key`);
+    if (!isCount(seq, 0)) throw invalid(`${what} values must be non-negative integers`);
+  }
+  return v as VersionVector;
+}
+
+function support(v: unknown): Support {
+  if (!isObject(v)) throw invalid('support must be an object');
+  for (const version of Object.values(v)) {
+    if (!isCount(version, 1)) throw invalid('support values must be positive integers');
+  }
+  return v as Support;
+}
+
+/** Checks a pull body field by field, so nothing malformed reaches storage (R16.1). */
+function pullRequest(body: Record<string, unknown>): PullRequest {
+  if (!isCount(body['limit'], 0)) throw invalid('limit must be a non-negative integer');
+  const origins = body['origins'];
+  if (
+    origins !== undefined &&
+    (!Array.isArray(origins) || origins.some((o) => typeof o !== 'string'))
+  ) {
+    throw invalid('origins must be an array of replica IDs');
+  }
+  return {
+    replicaId: replicaId(body['replicaId'], 'replicaId'),
+    vector: vector(body['vector'], 'vector'),
+    support: support(body['support']),
+    limit: body['limit'],
+    ...(origins === undefined
+      ? {}
+      : { origins: (origins as unknown[]).map((o) => replicaId(o, 'origins entry')) }),
+  };
+}
+
+function ackRequest(body: Record<string, unknown>): AckRequest {
+  return {
+    replicaId: replicaId(body['replicaId'], 'replicaId'),
+    durable: vector(body['durable'], 'durable'),
+  };
+}
+
 export function createRelayServer(options: RelayServerOptions): Server {
   const max = options.maxBodyBytes ?? 4 * 1024 * 1024;
   const log = options.log ?? (() => undefined);
@@ -105,17 +167,20 @@ export function createRelayServer(options: RelayServerOptions): Server {
         }
         const body = await readBody(req, max);
         if (route === 'POST /v1/pull') {
-          const r = await options.core.pull(parseJson(body) as unknown as PullRequest);
+          const r = await options.core.pull(pullRequest(parseJson(body)));
           status = 200;
           return send(res, 200, encodePullResponse(r), 'application/x-ndjson');
         }
         if (route === 'POST /v1/push') {
-          const r = await options.core.push(decodePushRequest(body));
+          const request = decodePushRequest(body);
+          replicaId(request.replicaId, 'replicaId');
+          support(request.support);
+          const r = await options.core.push(request);
           status = 200;
           return send(res, 200, JSON.stringify(r));
         }
         if (route === 'POST /v1/ack') {
-          await options.core.ack(parseJson(body) as unknown as AckRequest);
+          await options.core.ack(ackRequest(parseJson(body)));
           status = 204;
           res.writeHead(204);
           return res.end();

@@ -367,7 +367,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Depends: T2.3. Req: R16.1 to R16.6, design 11.
   - Done when: the threat model lists the defenses and known limits of design 11 (including the compaction trust assumption and the over-claim limit), documents the relay token, and records that `npm audit` for production dependencies is clean (none exist).
 
-- [ ] **T2.10 Fuzz and malformed-input tests [MVP]**
+- [x] **T2.10 Fuzz and malformed-input tests [MVP]**
   - Owner: Testing and QA.
   - Paths: `tests/fuzz/**`.
   - Depends: T2.3. Req: R16.1, R16.2, R4.7, R15.3.
