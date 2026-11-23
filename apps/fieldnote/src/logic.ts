@@ -3,8 +3,9 @@
  * writes `location`, version 2 writes `site` and `zone`. Every action has one stable mutationId.
  */
 import type { Collection, Replica, WriteResult } from '@weave/core';
+import type {
+  STATUS} from './model.js';
 import {
-  STATUS,
   inspectionsV1,
   inspectionsV2,
   observations,
