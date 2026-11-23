@@ -139,42 +139,42 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Implement replica, record and op ID generation from an injected `Random`, `buildOp` (seq, lamport and context from accepted ops only), `verifyOpLine` (strict structure, canonical form, D7, hash recomputation; `restore` gives `NOT_SUPPORTED`), version-vector helpers (merge, compare, covers), `happensBefore`, `isConcurrent`, `compareD4`.
   - Done when: unit and property tests pass, including clock independence (R2.4), `restore` rejection, and IDs reproducible from a seeded `Random`.
 
-- [ ] **T1.A4 Schema, field builders, migrations [MVP]**
+- [x] **T1.A4 Schema, field builders, migrations [MVP]**
   - Owner: Core engine.
   - Paths: `packages/core/src/schema/**`, `packages/core/test/schema/**`.
   - Depends: T0.3, T1.A1, T1.B1 (resolver names). Req: R8.1 to R8.5, R8.8, R6.4, R6.5, design 5.1, 5.3.
   - Implement `defineCollection`, `f.string|number|boolean|json|set|rank`, type inference (`InferRecord`), local-write validation, received-op validation of present fields, the migration chain with deep-frozen inputs, `SCHEMA_DOWNGRADE` detection helpers, `max-rank` configuration checks.
   - Done when: type-level tests pass; the migration tests of design 5.3 (repeatability, chain, cross-replica, frozen-input mutation) pass.
 
-- [ ] **T1.A5 Replica open, write path, queries, operation history wiring [MVP]**
+- [x] **T1.A5 Replica open, write path, queries, operation history wiring [MVP]**
   - Owner: Core engine.
   - Paths: `packages/core/src/engine/replica.ts`, `packages/core/src/engine/open.ts`, `packages/core/src/engine/write.ts`, `packages/core/src/engine/read.ts`, `packages/core/test/engine/**` (write, open, read, history tests).
   - Depends: T1.A2, T1.A3, T1.A4, T1.B2, **T1.B3**, **T1.B4**, T1.C1. Req: R1, R2, R2.5, R3.1, R3.2, R5.4, R6.8, R10.4, design 6.0, 7.1, 7.2, 3.4.
   - Implement `createReplica`, replica ID persistence, `meta/state`, `meta/schema` (upgrade rebuild in one transaction, `MIGRATION_FAILED`, `SCHEMA_DOWNGRADE`), the per-replica mutex, `create`/`update`/`delete` with **mandatory `mutationId`** (runtime validation, `mut/` record, `MUTATION_ID_REUSED`, `replayed`), the commit-counter check and retry, `get`, `query`, `subscribe`, `close`, **`collection.history(recordId)`** (reads the `rop/` index and calls `buildOpHistory`), and the wiring of `replica.sync` and `replica.endpoint()` to the sync engine through `SyncHost`. Every write computes `deriveRecord` and the **conflict history IDs (T1.B3) and stores `conflictHistoryIds` in the same transaction as `rec/`, `op/`, `rop/`, `mut/` and `meta/state`.**
   - Done when: the idempotency tests of design 12.3 pass (crash after commit before the response with `failAfterCommit`, payload mismatch, missing `mutationId`, concurrent identical calls); a test reads `conflictHistoryIds` from storage after a write that creates and then supersedes a conflict; the operation-history tests (a) to (g) of design 12.3 pass through the public call; offline-write and restart tests pass.
 
-- [ ] **T1.A6 `applyIncoming`: validation, prefix rule, buffer, promotion [MVP]**
+- [x] **T1.A6 `applyIncoming`: validation, prefix rule, buffer, promotion [MVP]**
   - Owner: Core engine.
   - Paths: `packages/core/src/engine/apply.ts`, `packages/core/src/engine/buffer.ts`, `packages/core/test/engine/apply*.test.ts`.
   - Depends: T1.A5, T1.B2, **T1.B3**. Req: R2.6, R2.7, R4.7, R4.10, R5.1 to R5.3, R16.1, R16.2, design 7.3, 3.5.
   - Implement Phase A1 to A3 (generic checks, application-schema check, three-step identity: conflict scan, collapse, existing check across `op/` and `pend/`), Phase B (per-origin prefix, `SCHEMA_TOO_NEW`, gaps into `pend/` insert-if-absent, the **promotion path**), Phase C (one transaction with identity re-check, commit-counter check, promotion list, `rop/` and `rec/` updates **including `conflictHistoryIds` computed by T1.B3 in the same transaction**, vector and `maxLamport`), the open-time invariant check, and the buffer reset on schema change.
   - Done when: all tests of design 12.3 for pending identity, copies inside a batch, pending promotion (including crash atomicity), validation atomicity and R15.11 (all four cases) pass; a test shows that a conflict created and superseded inside one received batch is present in `conflictHistoryIds` after commit.
 
-- [ ] **T1.A7 Rebuild, hashes, status, diagnostics, logging [MVP]**
+- [x] **T1.A7 Rebuild, hashes, status, diagnostics, logging [MVP]**
   - Owner: Core engine.
   - Paths: `packages/core/src/engine/rebuild.ts`, `packages/core/src/engine/hashes.ts`, `packages/core/src/engine/status.ts`, `packages/core/src/diagnostics/**`, `packages/core/test/diagnostics/**`, `packages/core/test/engine/rebuild*.test.ts`.
   - Depends: T1.A5, T1.A6, T1.B2, **T1.B3**. Req: R6.13, R7.4, R12.1 to R12.4, design 7.4, 7.5.
   - Implement `rebuild()` (recomputes `rec/` **and `conflictHistoryIds` through T1.B3**), `hashes()`, `status()`, the typed `WeaveEvent` stream, the logger hook (default no-op).
   - Done when: for **every R12 field**, this task is complete on its own, without waiting for the sync engine (T1.D3 depends on this task and adds the live checks): (R12.4) `hashes()` returns the state, op-set and conflict-view hashes and equal op sets give equal values; (R7.4, R6.13) `rebuild()` leaves all three hashes, the conflict view, the history log, `conflictHistoryIds` and the operation history unchanged; (R12.3) `status()` returns `pendingOps` per peer (accepted ops not covered by that peer's `ackVector`), `pendingBuffer` (ops in `pend/`, not accepted), the acknowledged vector per registered peer, `lastSyncWall` per peer (informational), the last result per peer including `partial` with blocked origins and the required schema version per origin, and `state`, using peer entries written through storage fixtures; the transitions `idle`, `syncing`, `failed` and the real `lastResult` and `lastSyncWall` after live syncs are asserted later by T1.D3, not here; (R12.1) each event type is emitted by its source and tested: `op.applied`, `op.duplicate`, `op.buffered` and `conflict.new` (carrying `conflictId`) here, `sync.start`, `batch.sent`, `batch.received`, `retry` and `error` in T1.D3; (R12.2) a custom logger receives every event with the documented payload shape, and with no logger configured nothing is written to the console or any sink (a spy on `console` and on the logger hook proves it).
 
-- [ ] **T1.A8 Conflict notifications and repair [MVP]**
+- [x] **T1.A8 Conflict notifications and repair [MVP]**
   - Owner: Core engine.
   - Paths: `packages/core/src/engine/notify.ts`, `packages/core/test/engine/notify*.test.ts`.
   - Depends: T1.A6, T1.B3. Req: D8, R5.5, R6.11, R15.13, design 6.1.
   - Implement mark-then-emit using `conflictHistoryIds`, the startup repair pass over `rec/`, and events carrying the conflict status.
   - Done when: the crash tests of design 12.3 pass (a conflict created and superseded in one batch with a crash before marking, then restart; a second crash between marking and emitting; no ID emitted twice).
 
-- [ ] **T1.A9 Public entry point and API documentation [MVP]**
+- [x] **T1.A9 Public entry point and API documentation [MVP]**
   - Owner: Core engine.
   - Paths: `packages/core/src/index.ts`, `packages/core/test/api/**`.
   - Depends: T1.A5, T1.A7, T1.A8, **T1.B3**, **T1.B4**, **T1.D3** (the `sync` and `endpoint` members it exports). Req: R11.1 to R11.4, design 7.1.
@@ -189,21 +189,21 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Implement `last-writer-wins`, `max`, `min`, `set-union`, `max-rank` as functions of entry metadata only, never of array position.
   - Done when: the direct-call property tests of design 12.2 pass (all permutations up to six entries, random shuffles above, reverse-D4 and interleaved orders, random rank maps, set-union output order).
 
-- [ ] **T1.B2 `deriveRecord` [MVP]**
+- [x] **T1.B2 `deriveRecord` [MVP]**
   - Owner: Conflict resolution.
   - Paths: `packages/core/src/state/derive.ts`, `packages/core/test/state/derive*.test.ts`.
   - Depends: T0.3, T1.B1, T1.A1, T1.A3 (`isConcurrent`, `compareD4`), and the migration function interface from T0.3 (a stub is acceptable until T1.A4 lands). Req: D5, D6, R6.1, R6.2, R6.7, R6.8, design 6.
   - Implement the eight steps (sort, delete rule, migration, `maxCtx` frontier, resolve, field conflict IDs, delete conflict IDs using the shared concurrency helper, visible fields).
   - Done when: unit tests cover concurrent and sequential edits, delete versus concurrent set, `set` after delete, and non-transitive contexts; the order-independence property passes.
 
-- [ ] **T1.B3 Conflict view, history log and history IDs [MVP]**
+- [x] **T1.B3 Conflict view, history log and history IDs [MVP]**
   - Owner: Conflict resolution.
   - Paths: `packages/core/src/state/conflicts.ts`, `packages/core/src/state/history.ts`, `packages/core/test/state/conflicts*.test.ts`, `packages/core/test/state/history*.test.ts`.
   - Depends: T1.B2. Req: D8, R6.2, R6.11 to R6.13, R7.5, design 6.1.
   - Implement the current view, the history replay in D4 order with `open` and `superseded` status, and the function that returns **all conflict IDs of a record's history (open and superseded)** for storage as `conflictHistoryIds`, so that the engine tasks T1.A5, T1.A6 and T1.A7 can store them in the same transaction as `rec/`.
   - Done when: the current view, history replay, `conflictHistoryIds` and the supersession test (R15.14) pass, including delivery in different orders.
 
-- [ ] **T1.B4 Record operation history function [MVP]**
+- [x] **T1.B4 Record operation history function [MVP]**
   - Owner: Conflict resolution.
   - Paths: `packages/core/src/state/opHistory.ts`, `packages/core/test/state/opHistory*.test.ts`.
   - Depends: T0.3, T1.A3 (`isConcurrent`, `compareD4`). Req: R2.5, D3, D4, design 6.0.
@@ -254,7 +254,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Depends: T0.3. Req: R4.6, R4.10, design 8.3.
   - Done when: unit tests show that an unsupported op stops its origin (later supported ops are withheld, not skipped), other origins are unaffected, `'*'` support accepts everything, and `origins` filtering works.
 
-- [ ] **T1.D3 Sync engine `replica.sync` [MVP]**
+- [x] **T1.D3 Sync engine `replica.sync` [MVP]**
   - Owner: Synchronization.
   - Paths: `packages/core/src/sync/engine.ts`, `packages/core/src/sync/host.ts`, `packages/core/src/protocol.ts`, `packages/core/test/sync/engine*.test.ts`.
   - Depends: T1.A6, T1.A7, T1.D1, T1.D2. Req: R4.1, R4.2, R4.5 to R4.7, R3.5, R12.1, R12.3, design 8.1, 8.2.
@@ -277,14 +277,14 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 ### Lane E: relay (Relay owner)
 
-- [ ] **T1.E1 RelayCore [MVP]**
+- [x] **T1.E1 RelayCore [MVP]**
   - Owner: Relay.
   - Paths: `packages/relay/src/core/**`, `packages/relay/test/core/**`, `packages/relay/test/ack/**`.
   - Depends: T0.3, T1.A1, T1.A3 (verify functions via `@weave/core/protocol`), T1.C1. Req: R4a.2 to R4a.8, R2.7, R16.1, R16.2, design 10.2, 10.3.
   - Implement registration, push (Phases A1 and A3 with the three-step identity check, contiguity, single transaction, durable-before-acknowledge, a single in-process queue, transaction re-check), pull (prefix rule from envelope fields only, `origins`, `limit: 0`), ack, `relay/vector`, the acknowledgement rules of design 10.3, byte-for-byte storage of op lines.
   - Done when: unit tests cover the ack cases (push-only, rejected push, pull-only, pull then ack, pull then crash, out-of-order and repeated acks, restart), opacity (no resolver, schema or migration import), and concurrent same-ID pushes with the queue and the re-check each disabled in turn.
 
-- [ ] **T1.E2 HTTP server, CLI, limits, token [MVP]**
+- [x] **T1.E2 HTTP server, CLI, limits, token [MVP]**
   - Owner: Relay.
   - Paths: `packages/relay/src/server/**`, `packages/relay/src/cli.ts`, `packages/relay/test/server/**`, `packages/relay/README.md`.
   - Depends: T1.E1. Req: R4a.1, R4a.9, design 10.1.

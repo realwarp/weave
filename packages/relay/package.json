@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@weave/core": "*",
-    "@weave/storage": "*"
+    "@weave/storage": "*",
+    "@weave/transport": "*"
   }
 }
