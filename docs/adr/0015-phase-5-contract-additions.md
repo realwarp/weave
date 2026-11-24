@@ -45,6 +45,36 @@ doc comment. Rules:
 
 | T5.5 | `CreateReplicaOptions.holdNewerSchema?: boolean`; `ReplicaStatus.held?: HeldStatus` (`ops`, `needs`); `PullRequest.hold?: boolean`; optional `SyncHost.holdsNewer?()`; storage keys `held/<origin>/<seq>`. Relay: `hold` accepted on `/v1/pull`. |
 
+| T5.6 | `AuthContext`, `OpSummary`, `AuthorizeRequest`, `AuthorizeHook`; optional third parameter `auth` of `ApplyIncoming`; `CreateReplicaOptions.authorize?`; `Replica.endpoint(options?: EndpointOptions)` with `auth?`; optional `SyncHost.authorizeSend?()`; helpers `assertIdentity`, `mayActAs`, `runAuthorize`, `summarize` in `@weave/core/protocol`. Relay: `RelayCoreOptions.authorize?`, optional `auth` on `RelayCore.pull/push/ack/putSnapshot`, `RelayCore.endpoint({ auth })`, `RelayServerOptions.identities?: RelayIdentity[]`; `UNAUTHORIZED` is HTTP 403. |
+
+### Authorization and authenticated identity (T5.6)
+
+- **One rule set.** Replicas and the relay call the same helpers from `@weave/core/protocol`,
+  so a decision never depends on which side makes it. Both see op envelopes only (origin, `seq`,
+  collection, schema version), never field values; the relay stays opaque.
+- **Identity comes from the transport, never the payload (R16.3).** An `AuthContext` is bound to
+  an endpoint by whoever authenticated the caller: `replica.endpoint({ auth })` or
+  `RelayCore.endpoint({ auth })` in process, or the relay server's `identities` mapping (bearer
+  secret to principal and `writableAs`). No request field can set or widen it. The shared relay
+  `token` only opens the relay and gives no identity (0.1.0 behaviour); it is never treated as a
+  device identity. With `identities` and no `token`, only mapped secrets are accepted.
+- **What is checked.** The claimed `replicaId` of a pull, push or ack, and the origin of every
+  pushed op, must be in `writableAs` (`'*'` for a trusted forwarder). Otherwise `UNAUTHORIZED`.
+- **The hook (R16.4).** Optional on replicas and the relay. Called with `direction: 'apply'`
+  before incoming ops are stored and `'send'` before ops leave (a push, or a pull being answered),
+  never for a vector-only pull and never for local writes. Anything but `true` (false, a throw,
+  a rejection) denies with `UNAUTHORIZED`: fail closed.
+- **Atomic.** Every check runs before anything is written: no ops, vector change, buffer entry,
+  acknowledgement or membership. A batch with one denied op is refused whole. On the relay a pull
+  is authorized before the puller is registered; if the answer changes between that check and
+  registration, the new answer is authorized again.
+- **Isolation.** `UNAUTHORIZED` quarantines an origin like other origin errors (design 7.3): a
+  denied push origin is skipped and the rest are pushed; when an endpoint denies a pull, the sync
+  client asks once per origin and quarantines only the denied ones. The result is `failed` with
+  each denied origin in `rejectedOrigins`; allowed origins have still synced.
+- **Limit.** Admin routes keep their 0.1.0 rule (any accepted secret). Authorization is per
+  request and per origin, not per record.
+
 ### Held newer-schema ops (T5.5)
 
 - **Off by default.** Without `holdNewerSchema` the prefix rule of R4.10 is unchanged.

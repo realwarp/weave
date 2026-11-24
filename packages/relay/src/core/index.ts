@@ -20,6 +20,8 @@ import {
   selectReadablePrefix,
   verifyOpLine,
   type AckRequest,
+  type AuthContext,
+  type AuthorizeHook,
   type PullRequest,
   type PullResponse,
   type PushRequest,
@@ -32,6 +34,7 @@ import {
   type SyncEndpoint,
   type VersionVector,
 } from '@weave/core/protocol';
+import { assertIdentity, authorizePullSend, authorizePush } from './authorize.js';
 import { computeHorizon } from './compaction.js';
 import { SNAPSHOT_KEY, checkUpload, readSnapshot, supersedes } from './snapshot.js';
 
@@ -60,6 +63,12 @@ export interface RelayCoreOptions {
   readonly unsafeDisableRecheck?: boolean;
   /** Compaction options (off by default). */
   readonly compaction?: { enabled: boolean };
+  /**
+   * [ADV] Authorization hook (R16.4): called before a push is stored (`apply`) and before a pull
+   * is answered (`send`), with op envelopes only. Anything but `true` denies with
+   * `UNAUTHORIZED` and nothing changes. Absent: allow all (0.1.0).
+   */
+  readonly authorize?: AuthorizeHook;
 }
 
 interface RelayState {
@@ -281,8 +290,43 @@ export class RelayCore implements SyncEndpoint {
     return result;
   }
 
-  async pull(request: PullRequest): Promise<PullResponse> {
+  /**
+   * Serves a pull. [ADV] `auth` is the caller as authenticated by the server (R16.3), never
+   * taken from the request; it must be allowed to act as `request.replicaId`.
+   */
+  async pull(request: PullRequest, auth?: AuthContext): Promise<PullResponse> {
+    assertIdentity(auth, request.replicaId); // before membership is recorded
+    const hook = this.options.authorize;
+    // [ADV] With a hook, a first selection is authorized BEFORE membership is recorded, so a
+    // denied pull writes nothing. The answer is then selected again after registration (R3.6
+    // order); if it changed in between, the new selection is authorized too.
+    const first = hook === undefined ? undefined : await this.preparePull(request);
+    if (first !== undefined)
+      await authorizePullSend(hook, request.replicaId, first.selected.lines, auth);
     await this.register(request.replicaId); // membership before any data is returned (R3.6)
+    const { vector, compaction, selected } = await this.preparePull(request);
+    if (
+      first !== undefined &&
+      JSON.stringify(first.selected.lines) !== JSON.stringify(selected.lines)
+    )
+      await authorizePullSend(hook, request.replicaId, selected.lines, auth);
+    return {
+      endpointId: this.endpointId,
+      durable: vector,
+      support: '*',
+      ops: selected.lines,
+      blocked: selected.blocked,
+      more: selected.more,
+      compaction: {
+        horizon: await this.horizon(),
+        compactedThrough: compaction.compactedThrough,
+        removed: { ...compaction.removed },
+      },
+    };
+  }
+
+  /** Reads the relay state and selects a pull's answer; throws NEEDS_SNAPSHOT (R3.9). */
+  private async preparePull(request: PullRequest) {
     const [vector, compaction] = await this.storage.transaction('ro', async (tx) => {
       const s = await readState(tx);
       const c = await readCompaction(tx);
@@ -332,33 +376,27 @@ export class RelayCore implements SyncEndpoint {
       }
     }
 
-    return {
-      endpointId: this.endpointId,
-      durable: vector,
-      support: '*',
-      ops: selected.lines,
-      blocked: selected.blocked,
-      more: selected.more,
-      compaction: {
-        horizon: await this.horizon(),
-        compactedThrough: compaction.compactedThrough,
-        removed: { ...compaction.removed },
-      },
-    };
+    return { vector, compaction, selected };
   }
 
-  push(request: PushRequest): Promise<PushResponse> {
-    const run = () => this.pushLocked(request);
+  /**
+   * Stores a push atomically. [ADV] `auth` (R16.3) must be allowed to act as the claimed
+   * `replicaId` and as the origin of every op; the hook (R16.4) must allow the batch.
+   */
+  push(request: PushRequest, auth?: AuthContext): Promise<PushResponse> {
+    const run = () => this.pushLocked(request, auth);
     return this.options.unsafeDisableQueue === true ? run() : this.queue.run(run);
   }
 
-  private async pushLocked(request: PushRequest): Promise<PushResponse> {
+  private async pushLocked(request: PushRequest, auth?: AuthContext): Promise<PushResponse> {
     if (request.ops.length > this.limits.maxOpsPerPush) {
       throw new WeaveError(
         'VALIDATION_FAILED',
         `A push may carry at most ${this.limits.maxOpsPerPush} ops`,
       );
     }
+    // [ADV] Identity and hook decide before anything is written, membership included.
+    await authorizePush(this.options.authorize, request.replicaId, request.ops, auth);
     await this.register(request.replicaId);
 
     // Phase A1: verify every line; any failure rejects the whole push.
@@ -462,7 +500,9 @@ export class RelayCore implements SyncEndpoint {
     return { durable: nextState.vector, rejected: [], need, blocked: [] };
   }
 
-  async ack(request: AckRequest): Promise<void> {
+  /** Records an acknowledgement. [ADV] `auth` must be allowed to act as `request.replicaId`. */
+  async ack(request: AckRequest, auth?: AuthContext): Promise<void> {
+    assertIdentity(auth, request.replicaId);
     await this.storage.transaction('rw', async (tx) => {
       const member = (await readMember(tx, request.replicaId)) ?? { ackVector: {} };
       tx.put(
@@ -487,7 +527,14 @@ export class RelayCore implements SyncEndpoint {
    * [ADV] Stores a snapshot uploaded by a member. It must be intact and cover the relay's
    * discarded history; it replaces the stored one only if it holds at least as much.
    */
-  putSnapshot(snapshot: Snapshot): Promise<void> {
+  putSnapshot(snapshot: Snapshot, auth?: AuthContext): Promise<void> {
+    // [ADV] R16.3: an authenticated caller uploads only a snapshot it may act as the source of.
+    try {
+      if (auth !== undefined)
+        assertIdentity(auth, String((snapshot as { source?: unknown }).source));
+    } catch (e) {
+      return Promise.reject(e as Error);
+    }
     return this.queue.run(async () => {
       const compaction = await this.storage.transaction('ro', (tx) => readCompaction(tx));
       const checked = await checkUpload(
@@ -500,6 +547,22 @@ export class RelayCore implements SyncEndpoint {
           tx.put(SNAPSHOT_KEY, JSON.stringify(checked));
       });
     });
+  }
+
+  /**
+   * [ADV] This relay as a `SyncEndpoint` bound to an authenticated caller (R16.3), for
+   * in-process use. The identity is fixed here and never read from a request, like the HTTP
+   * server's token-to-identity mapping.
+   */
+  endpoint(options: { readonly auth?: AuthContext } = {}): SyncEndpoint {
+    const auth = options.auth;
+    return {
+      pull: (request) => this.pull(request, auth),
+      push: (request) => this.push(request, auth),
+      ack: (request) => this.ack(request, auth),
+      snapshot: () => this.snapshot(),
+      putSnapshot: (snapshot) => this.putSnapshot(snapshot, auth),
+    };
   }
 
   /** Mark a peer as removed. Idempotent: first value kept. */
