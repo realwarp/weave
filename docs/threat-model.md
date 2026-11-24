@@ -36,7 +36,7 @@ the two applications. Requirements R16.1 to R16.6; design section 11.
 | Secrets in logs                            | The token is never logged; request logs hold method, route, status and duration only; events carry IDs and counts, not field values | relay server, engine logger         |
 | Accidental data corruption at rest         | Journal header checks and SHA-256 trailers, snapshot checksums; a torn tail is cut only when provably incomplete          | file adapter (design 9.1)                 |
 | Two processes writing one data directory   | Exclusive `LOCK`; takeover only when the holder is provably dead on the same host, boot and PID namespace                 | file adapter                              |
-| Dependency vulnerabilities                 | Zero runtime dependencies; `npm audit --omit=dev` and `npm audit` in CI                                                    | CI (R16.6)                                |
+| Dependency vulnerabilities                 | Zero runtime dependencies; `npm audit --omit=dev` gates CI; `npm audit` of dev tools is reported (see below)              | CI (R16.6)                                |
 
 ## The relay token
 
@@ -77,4 +77,12 @@ These are not defended in the MVP. They are stated so that applications can deci
 
 Recorded 2026-11-24: `npm audit --omit=dev` reports **0 vulnerabilities**. No package ships a
 runtime dependency outside the `@weave/*` workspace, so the production tree has nothing to audit.
-Development tools (TypeScript, Vitest, ESLint, Vite, Playwright) are checked by `npm audit` in CI.
+CI fails if that changes.
+
+Development tools are audited too (`npm audit`, reported in CI but not gating). On 2026-11-24 it
+reports 12 advisories (7 moderate, 1 high, 4 critical), all in test and documentation tooling:
+Vitest 2 and its browser and coverage plugins, the Vite and esbuild versions they pull in, and
+TypeDoc's `minimatch`. None of this code ships in a WEAVE package or runs in an application. It
+runs on developer and CI machines, so the exposure is to a developer who runs the dev servers or
+tests on untrusted input. Every fix needs a major upgrade (Vitest 5, a newer TypeDoc), planned as
+follow-up work after 0.1.0.
