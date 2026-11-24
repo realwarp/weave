@@ -136,6 +136,8 @@ export interface ReplicaStatus {
    * an app update is needed to apply them.
    */
   readonly held?: HeldStatus;
+  /** [ADV] Peers currently banned for sending invalid data (R10.5). Absent when none. */
+  readonly bans?: readonly BanStatus[];
 }
 
 /** [ADV] Held newer-schema ops waiting for an app update (R8.7). */
@@ -220,6 +222,31 @@ export interface CreateReplicaOptions {
    * Anything but `true` denies with `UNAUTHORIZED`; nothing changes. Absent: allow all.
    */
   readonly authorize?: AuthorizeHook;
+  /**
+   * [ADV] Peer ban (R10.5): a peer that repeatedly sends invalid data is refused for a while,
+   * measured with the injected monotonic scheduler. Off unless `enabled` is true.
+   */
+  readonly ban?: BanOptions;
+}
+
+/** [ADV] Peer ban settings (R10.5). */
+export interface BanOptions {
+  /** Turn the ban on (default false). */
+  readonly enabled: boolean;
+  /** Strikes within `windowMs` that ban a peer (default 3). */
+  readonly threshold?: number;
+  /** How long strikes count, in monotonic ms (default 60000). */
+  readonly windowMs?: number;
+  /** How long a ban lasts, in monotonic ms (default 300000). */
+  readonly banMs?: number;
+}
+
+/** [ADV] One banned peer, as reported by `status()` (R10.5). */
+export interface BanStatus {
+  /** The banned peer's replica ID. */
+  readonly peer: ReplicaId;
+  /** Monotonic milliseconds until the ban ends. */
+  readonly remainingMs: number;
 }
 
 /** [ADV] Options of `replica.endpoint()` (R16.3). */
@@ -333,6 +360,13 @@ export interface SyncHost {
   noteCompaction?(info: CompactionInfo): Promise<void>;
   /** [ADV] True when this replica holds unreadable ops (R8.7), so peers send it every op. */
   holdsNewer?(): boolean;
+  /**
+   * [ADV] Peer ban (R10.5). Called with the endpoint's ID before pulled ops are applied: throws
+   * `PEER_BANNED` when that peer is banned. Optional.
+   */
+  assertPeerAllowed?(peer: ReplicaId): void;
+  /** [ADV] Records that `peer` sent invalid data in one sync (one strike, R10.5). Optional. */
+  notePeerInvalid?(peer: ReplicaId): void;
   /** [ADV] Runs the authorization hook before ops are sent to `peer` (R16.4). Optional. */
   authorizeSend?(peer: ReplicaId, lines: readonly string[]): Promise<void>;
 }

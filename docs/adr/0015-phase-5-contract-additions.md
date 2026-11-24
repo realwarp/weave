@@ -47,6 +47,28 @@ doc comment. Rules:
 
 | T5.6 | `AuthContext`, `OpSummary`, `AuthorizeRequest`, `AuthorizeHook`; optional third parameter `auth` of `ApplyIncoming`; `CreateReplicaOptions.authorize?`; `Replica.endpoint(options?: EndpointOptions)` with `auth?`; optional `SyncHost.authorizeSend?()`; helpers `assertIdentity`, `mayActAs`, `runAuthorize`, `summarize` in `@weave/core/protocol`. Relay: `RelayCoreOptions.authorize?`, optional `auth` on `RelayCore.pull/push/ack/putSnapshot`, `RelayCore.endpoint({ auth })`, `RelayServerOptions.identities?: RelayIdentity[]`; `UNAUTHORIZED` is HTTP 403. |
 
+| T5.7 | `CreateReplicaOptions.ban?: BanOptions` (`enabled`, `threshold?`, `windowMs?`, `banMs?`); `ReplicaStatus.bans?: BanStatus[]` (`peer`, `remainingMs`); optional `SyncHost.assertPeerAllowed?()` and `notePeerInvalid?()`; error code `PEER_BANNED` (added in T5.1) now used. |
+
+### Peer ban (T5.7)
+
+- **Off by default.** `createReplica({ ban: { enabled: true } })`; defaults 3 strikes within
+  60 s ban for 5 min. Invalid settings fail at `createReplica` with `VALIDATION_FAILED`.
+- **Monotonic time only.** The ban book reads the injected `Scheduler.monotonicMs()`; wall-clock
+  changes neither lift nor extend a ban. The book is in memory, so a restart lifts every ban.
+- **What is a strike.** One request, or one sync, whose data this replica rejected as invalid:
+  `VALIDATION_FAILED`, `UNSUPPORTED_VALUE`, `INTEGRITY_CONFLICT` or `MIGRATION_FAILED`. Endpoint
+  side: a rejected push from that peer. Client side: a sync in which the endpoint served ops that
+  were rejected (`rejectedOrigins` with `direction: 'pull'`), once per sync. Not strikes:
+  `UNAUTHORIZED`, `SCHEMA_TOO_NEW`, `NOT_SUPPORTED`, `PEER_REMOVED`, transport and storage errors,
+  and rejections of what this replica pushed.
+- **What a ban refuses.** Pushes and acks from the peer fail with `PEER_BANNED` before anything is
+  read or written; a sync with a banned endpoint fails with `PEER_BANNED` before any pulled op is
+  applied. Pulls by a banned peer are still served: the ban stops accepting, not sending (R10.5).
+  Other peers are unaffected. When the ban ends the peer starts again with no strikes.
+- **Limits.** Peers are keyed by the replica ID they claim. Without authenticated identity (T5.6
+  `identities` or `endpoint({ auth })`) a peer can evade a ban by claiming a new ID; with it, the
+  claimed ID must be one it may act as. The relay has no ban in 0.2.0 (task scope is the replica).
+
 ### Authorization and authenticated identity (T5.6)
 
 - **One rule set.** Replicas and the relay call the same helpers from `@weave/core/protocol`,

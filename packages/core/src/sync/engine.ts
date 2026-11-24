@@ -21,6 +21,7 @@ import type {
 } from '../contracts/sync.js';
 import { readEnvelope } from '../ops/op.js';
 import { mergeVectors, vectorsEqual } from '../ops/vector.js';
+import { INVALID_DATA_CODES } from './ban.js';
 import { selectReadablePrefix } from './select.js';
 import { DEFAULT_RETRY_POLICY, withRetry } from './retry.js';
 
@@ -97,6 +98,8 @@ export async function runSync(
     });
 
   const noteEndpoint = (res: PullResponse): void => {
+    // [ADV] R10.5: nothing from a banned endpoint is applied; the sync fails with PEER_BANNED.
+    host.assertPeerAllowed?.(res.endpointId);
     peerId = res.endpointId;
     peerSupport = res.support;
     endpointDurable = mergeVectors(endpointDurable, res.durable);
@@ -272,6 +275,16 @@ export async function runSync(
     failure =
       e instanceof WeaveError ? e : new WeaveError('TRANSPORT_ERROR', 'Sync failed', { cause: e });
   }
+
+  // [ADV] R10.5: a sync in which the endpoint sent invalid data is one strike against it.
+  // Rejections of what WE pushed, schema mismatch and authorization are not strikes.
+  if (
+    peerId !== null &&
+    [...rejected.values()].some(
+      (r) => r.direction === 'pull' && INVALID_DATA_CODES.includes(r.code),
+    )
+  )
+    host.notePeerInvalid?.(peerId);
 
   const blocked = [...blockedPull.values(), ...blockedPush.values()];
   let result: SyncResult;

@@ -24,6 +24,7 @@ import type {
   CompactionReport,
   ConflictApi,
   ConflictFilter,
+  BanOptions,
   CreateReplicaOptions,
   EndpointOptions,
   Query,
@@ -97,6 +98,7 @@ import {
 } from '../sync/compaction.js';
 import { runSync } from '../sync/engine.js';
 import { assertIdentity, runAuthorize, summarize } from '../sync/authorize.js';
+import { BanBook, isInvalidData, resolveBanOptions } from '../sync/ban.js';
 import { Mutex } from './mutex.js';
 import {
   EMPTY_STATE,
@@ -204,6 +206,8 @@ class Engine implements Replica, SyncHost {
   private readonly listeners = new Set<(change: ChangeEvent) => void>();
   private readonly definitions: Map<string, AnyDefinition>;
   private syncState: ReplicaStatus['state'] = 'idle';
+  /** [ADV] Peer ban book (R10.5); undefined when the ban is off. */
+  private readonly bans: BanBook | undefined;
   private closed = false;
 
   constructor(
@@ -218,7 +222,13 @@ class Engine implements Replica, SyncHost {
     private readonly hold: boolean = false,
     private readonly invalid: ReadonlySet<string> = new Set(),
     private readonly authorizeHook: AuthorizeHook | undefined = undefined,
+    banOptions: BanOptions | undefined = undefined,
   ) {
+    // [ADV] R10.5: time comes only from the injected monotonic scheduler.
+    this.bans =
+      banOptions?.enabled === true
+        ? new BanBook(banOptions, () => scheduler.monotonicMs())
+        : undefined;
     this.id = replicaId;
     this.replicaId = replicaId;
     this.clock = clock;
@@ -271,6 +281,16 @@ class Engine implements Replica, SyncHost {
   /** [ADV] R8.7: whether this replica holds ops it cannot read instead of blocking them. */
   holdsNewer(): boolean {
     return this.hold;
+  }
+
+  /** [ADV] R10.5: refuses to apply ops pulled from a banned endpoint. */
+  assertPeerAllowed(peer: ReplicaId): void {
+    this.bans?.assertNotBanned(peer);
+  }
+
+  /** [ADV] R10.5: one sync in which `peer` sent invalid data is one strike. */
+  notePeerInvalid(peer: ReplicaId): void {
+    this.bans?.strike(peer);
   }
 
   private definition(name: string): AnyDefinition {
@@ -1057,7 +1077,16 @@ class Engine implements Replica, SyncHost {
       push: async (request) => {
         this.alive();
         assertIdentity(auth, request.replicaId);
-        const result = await this.applyIncoming(request.ops, request.replicaId, auth);
+        // [ADV] R10.5: a banned peer is refused before anything is read or written.
+        this.bans?.assertNotBanned(request.replicaId);
+        let result: ApplyResult;
+        try {
+          result = await this.applyIncoming(request.ops, request.replicaId, auth);
+        } catch (e) {
+          // One rejected request of invalid data is one strike against its sender.
+          if (this.bans !== undefined && isInvalidData(e)) this.bans.strike(request.replicaId);
+          throw e;
+        }
         const pushed: Record<string, number> = {};
         for (const line of request.ops) {
           const env = readEnvelope(line);
@@ -1075,6 +1104,7 @@ class Engine implements Replica, SyncHost {
       ack: async (request) => {
         this.alive();
         assertIdentity(auth, request.replicaId);
+        this.bans?.assertNotBanned(request.replicaId);
         await this.mergePeerAck(request.replicaId, request.durable);
       },
       // [ADV] A replica serves its own snapshot for direct bootstrapping (R4.8).
@@ -1119,6 +1149,7 @@ class Engine implements Replica, SyncHost {
       }
       const compaction = await readCompaction(tx);
       const held = summarizeHeld(await readHeld(tx), this.definitions);
+      const bans = this.bans?.status() ?? [];
       return {
         state: this.syncState,
         vector: state.vector,
@@ -1126,6 +1157,7 @@ class Engine implements Replica, SyncHost {
         peers,
         ...(compaction === undefined ? {} : { compaction }),
         ...(held === undefined ? {} : { held }),
+        ...(bans.length === 0 ? {} : { bans }),
       };
     });
   }
@@ -1554,6 +1586,8 @@ export async function createReplica(options: CreateReplicaOptions): Promise<Repl
     names.add(d.name);
   }
   const random = options.random ?? platformRandom;
+  // [ADV] Invalid ban settings fail before storage is opened (R10.5).
+  if (options.ban?.enabled === true) resolveBanOptions(options.ban);
   const storage = options.storage;
   await storage.open();
   try {
@@ -1666,6 +1700,7 @@ export async function createReplica(options: CreateReplicaOptions): Promise<Repl
       options.holdNewerSchema === true,
       invalid,
       options.authorize,
+      options.ban,
     );
     await engine.sweepPending();
     await engine.repairNotifications();
