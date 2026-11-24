@@ -507,7 +507,7 @@ Each task is its own gate with an independent review. **The order of requirement
   - Done when: a new or removed-and-rejoined replica bootstraps from a snapshot with tombstones and then continues normal sync to equal hashes.
   - Review: independent reviewer agent (Testing and QA); report `docs/reviews/T5.2.md`; the task merges only after the report records no open findings.
 
-- [ ] **T5.3 [ADV] `restore` and `update-wins`**
+- [x] **T5.3 [ADV] `restore` and `update-wins`**
   - Owner: Conflict resolution.
   - Paths: `packages/core/src/state/derive.ts` (step 2 and policy), `packages/core/src/state/restore.ts`, `packages/core/test/state/restore*.test.ts`.
   - Depends: Gate 4, T5.2. Req: R6.9, D6, R15.9.
