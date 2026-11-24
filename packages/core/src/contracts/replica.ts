@@ -16,26 +16,37 @@ import type {
 
 /** Required on every create, update and delete (R5.4). One stable ID per user intent. */
 export interface WriteOptions {
+  /** A unique identifier for this user intent, used for idempotent retries. */
   readonly mutationId: string;
 }
 
+/** Result of a write operation. */
 export interface WriteResult {
+  /** The ID of the record that was created or updated. */
   readonly recordId: string;
+  /** The ID of the operation that was created. */
   readonly opId: OpId;
   /** True when a stored `mutationId` result was returned and no new op was created. */
   readonly replayed: boolean;
 }
 
+/** A record view with its current value and conflicts. */
 export interface RecordView<T> {
+  /** The unique ID of the record. */
   readonly id: string;
+  /** The current resolved value of the record. */
   readonly value: T;
+  /** List of current conflicts affecting this record. */
   readonly conflicts: readonly ConflictRecord[];
 }
 
+/** Query options for filtering and sorting records. */
 export interface Query<T> {
   /** Field equality filters (R1.5). */
   readonly where?: Partial<T>;
+  /** Field to sort by. */
   readonly orderBy?: keyof T & string;
+  /** Sort direction. */
   readonly direction?: 'asc' | 'desc';
   /** Include deleted records (default false). */
   readonly includeDeleted?: boolean;
@@ -43,20 +54,29 @@ export interface Query<T> {
 
 /** A typed handle on one collection. Every storage-backed call returns a Promise. */
 export interface Collection<T> {
+  /** Create a new record. */
   create(value: T, options: WriteOptions): Promise<WriteResult>;
+  /** Update an existing record. */
   update(recordId: string, patch: Partial<T>, options: WriteOptions): Promise<WriteResult>;
+  /** Delete a record. */
   delete(recordId: string, options: WriteOptions): Promise<WriteResult>;
+  /** Get a single record by ID. */
   get(recordId: string): Promise<RecordView<T> | undefined>;
+  /** Query records with optional filtering and sorting. */
   query(query?: Query<T>): Promise<Array<RecordView<T>>>;
   /** Operation history of one record in D4 order, deleted records included (R2.5). */
   history(recordId: string): Promise<OpHistoryEntry[]>;
 }
 
+/** Filter for conflict queries. */
 export interface ConflictFilter {
+  /** Filter by collection name. */
   readonly collection?: string;
+  /** Filter by record ID. */
   readonly recordId?: string;
 }
 
+/** API for accessing conflicts. */
 export interface ConflictApi {
   /** Open conflicts, derived from stored records. */
   current(filter?: ConflictFilter): Promise<ConflictRecord[]>;
@@ -66,57 +86,83 @@ export interface ConflictApi {
 
 /** A change notification (R3.3). */
 export interface ChangeEvent {
+  /** Where the change came from. */
   readonly source: 'local' | 'sync';
+  /** The collection that changed. */
   readonly collection: string;
+  /** The ID of the record that changed. */
   readonly recordId: string;
+  /** What kind of change occurred. */
   readonly kind: 'set' | 'delete';
 }
 
+/** Current status of the replica. */
 export interface ReplicaStatus {
+  /** Current operational state. */
   readonly state: 'idle' | 'syncing' | 'failed';
+  /** The accepted version vector. */
   readonly vector: VersionVector;
   /** Ops in `pend/`: buffered, NOT accepted (design 3.5). */
   readonly pendingBuffer: number;
+  /** Map of peer IDs to their sync status. */
   readonly peers: Readonly<
     Record<
       ReplicaId,
       {
+        /** What the peer has confirmed holding durably. */
         readonly ackVector: VersionVector;
         /** Accepted ops the peer has not acknowledged. */
         readonly pendingOps: number;
+        /** The result of the last sync with this peer, whatever its status. */
         readonly lastResult?: SyncResult;
+        /** Wall time of the last `complete` sync (display only, never used for ordering). */
         readonly lastSyncWall?: number;
       }
     >
   >;
 }
 
+/** Options for creating a new replica. */
 export interface CreateReplicaOptions {
+  /** Storage adapter for persistence. */
   readonly storage: StorageAdapter;
+  /** Collection definitions. */
   readonly collections: ReadonlyArray<CollectionDefinition<Record<string, FieldSpec>>>;
+  /** Optional event logger. */
   readonly logger?: Logger;
+  /** Optional wall-clock source (defaults to platform time). */
   readonly clock?: Clock;
+  /** Optional randomness source (defaults to platform crypto). */
   readonly random?: Random;
+  /** Optional scheduler for timing operations. */
   readonly scheduler?: Scheduler;
 }
 
+/** The main interface for interacting with a WEAVE replica. */
 export interface Replica {
+  /** The unique ID of this replica. */
   readonly id: ReplicaId;
+  /** Get a typed handle for a collection. */
   collection<D extends CollectionDefinition<Record<string, FieldSpec>>>(
     definition: D,
   ): Collection<InferRecord<D>>;
+  /** Access to the conflict API. */
   readonly conflicts: ConflictApi;
   /** Synchronous. Returns an unsubscribe function. */
   subscribe(listener: (change: ChangeEvent) => void): () => void;
+  /** Sync with a remote endpoint. */
   sync(endpoint: SyncEndpoint, options?: SyncOptions): Promise<SyncResult>;
   /** An endpoint that serves this replica, for direct replica-to-replica sync (R4.3). */
   endpoint(): SyncEndpoint;
+  /** Get the current replica status. */
   status(): Promise<ReplicaStatus>;
+  /** Compute hashes of the current state. */
   hashes(): Promise<Hashes>;
   /** Re-derive all records from the op log (R7.4). Does not touch ops. */
   rebuild(): Promise<void>;
-  /** Uses the `Random` the replica was created with (R5.4). */
+  /** Generate a new mutation ID using the replica's random source (R5.4). */
   newMutationId(): string;
+  /** Close the replica and release resources. */
   close(): Promise<void>;
 }
 
@@ -125,9 +171,13 @@ export interface Replica {
  * Core engine owner and the Synchronization owner meet at one interface.
  */
 export interface SyncHost {
+  /** The unique ID of this replica. */
   readonly replicaId: ReplicaId;
+  /** Wall-clock source for display values. */
   readonly clock: Clock;
+  /** Randomness source. */
   readonly random: Random;
+  /** Scheduler for timing operations. */
   readonly scheduler: Scheduler;
   /** What this replica can read, per collection. */
   support(): Support;
@@ -141,15 +191,31 @@ export interface SyncHost {
     origin: ReplicaId,
     afterSeq: number,
     limit: number,
-  ): Promise<Array<{ seq: number; collection: string; schemaVersion: number; line: string }>>;
+  ): Promise<
+    Array<{
+      /** The op's sequence number. */
+      seq: number;
+      /** The op's collection (envelope field). */
+      collection: string;
+      /** The schema version the op was written with (envelope field). */
+      schemaVersion: number;
+      /** The canonical op line, unchanged. */
+      line: string;
+    }>
+  >;
+  /** Apply incoming ops from a sync batch. */
   applyIncoming: ApplyIncoming;
+  /** Read peer state. */
   readPeer(peerId: string): Promise<PeerEntry | undefined>;
+  /** Write peer state. */
   writePeer(peerId: string, entry: PeerEntry): Promise<void>;
   /** Count of buffered ops. */
   pendingBufferSize(): Promise<number>;
   /** Runs `fn` under the per-replica mutex. */
   runExclusive<T>(fn: () => Promise<T>): Promise<T>;
+  /** Emit an event to the logger. */
   emit(event: WeaveEvent): void;
+  /** Update the replica's state. */
   setState(state: ReplicaStatus['state']): void;
 }
 

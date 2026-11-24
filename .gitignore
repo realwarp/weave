@@ -11,3 +11,9 @@ relay-data/
 .DS_Store
 Thumbs.db
 # NOTE: .kiro/ is intentionally NOT ignored (hackathon requirement R19.2).
+docs/api/
+tests/quickstart/.generated/
+coverage/
+relay-data/
+test-results/
+playwright-report/

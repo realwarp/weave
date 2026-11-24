@@ -20,6 +20,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:browser": "vitest run -c tests/browser/vitest.config.ts",
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "check:license": "node scripts/check-license.mjs",
     "audit": "npm audit --omit=dev",
@@ -29,12 +30,14 @@
     "demo:ghostline": "node scripts/demo.mjs ghostline",
     "demo:fieldnote": "node scripts/demo.mjs fieldnote",
     "docs:api": "typedoc",
-    "typecheck:tests": "tsc -p packages/core/tsconfig.test.json && tsc -p packages/storage/tsconfig.test.json && tsc -p packages/transport/tsconfig.test.json && tsc -p packages/relay/tsconfig.test.json && tsc -p packages/testing/tsconfig.test.json"
+    "typecheck:tests": "tsc -p packages/core/tsconfig.test.json && tsc -p packages/storage/tsconfig.test.json && tsc -p packages/transport/tsconfig.test.json && tsc -p packages/relay/tsconfig.test.json && tsc -p packages/testing/tsconfig.test.json && tsc -p tests/tsconfig.json && tsc -p apps/ghostline/tsconfig.json && tsc -p apps/fieldnote/tsconfig.json"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",
     "@playwright/test": "^1.49.0",
     "@types/node": "^22.10.0",
+    "@vitest/browser": "^2.1.9",
+    "@vitest/coverage-v8": "^2.1.9",
     "eslint": "^9.15.0",
     "fast-check": "^3.23.0",
     "prettier": "^3.4.0",

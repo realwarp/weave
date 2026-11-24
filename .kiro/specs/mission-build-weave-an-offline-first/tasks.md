@@ -106,7 +106,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Depends: T0.3. Req: R17.1 to R17.4, design 16.
   - Done when: ADR-0001 holds the comparison of state and operation CRDTs, event sourcing, timestamp LWW, server-authoritative sync and peer-to-peer versus relay, and states what WEAVE adopts and does not adopt; the component diagram and protocol sketch exist.
 
-- [ ] **T0.8 Gate 0 review [MVP], review-only**
+- [x] **T0.8 Gate 0 review [MVP], review-only**
   - Owner: independent reviewer agent (Testing and QA).
   - Paths (read): everything produced by T0.1 to T0.7; (write): `docs/reviews/T0.8.md` (Testing and QA owns `docs/reviews/**`).
   - Depends: T0.1 to T0.7. Req: design 18.3.
@@ -118,63 +118,63 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 ### Lane A: core engine (Core engine owner)
 
-- [ ] **T1.A1 Canonical codec and hashing [MVP]**
+- [x] **T1.A1 Canonical codec and hashing [MVP]**
   - Owner: Core engine.
   - Paths: `packages/core/src/canonical/**`, `packages/core/test/canonical/**`.
   - Depends: T0.3, T0.4. Req: D7, R2.8, R16.1, design 4.
   - Implement `assertSupported` (JSON-path errors, depth and size limits, `-0`), `encodeCanonical` (RFC 8785, UTF-16 key order, ES number form), `sha256Hex` (platform crypto), `compareUtf8`, and the hash helpers (op, state, op-set, conflict-view, mutation payload).
   - Done when: all vectors pass in Node (the Chromium run is T2.8); property tests show key-order independence and rejection of every unsupported type.
 
-- [ ] **T1.A2 Randomness and mutation IDs [MVP]**
+- [x] **T1.A2 Randomness and mutation IDs [MVP]**
   - Owner: Core engine.
   - Paths: `packages/core/src/ops/random.ts`, `packages/core/test/ops/random.test.ts`.
   - Depends: T0.3. Req: R5.4, R10.2, design 7.1.
   - Implement `platformRandom` (chunked `getRandomValues`), `randomFloat(random)` (unsigned big-endian, 53 bits), `newMutationId(random)` (16 bytes as 26 base32 characters), and the default `Clock`. The seeded generator is T1.F1.
   - Done when: the fixed-vector tests of design 12.3 pass (`80 00 00 00 00 00 00 00` gives 0.5; `00 00 00 00 00 00 08 00` gives 2^-53; the reversed bytes differ; all zero gives 0; all `0xFF` gives (2^53-1)/2^53; property test `0 <= x < 1`); `newMutationId` output matches `[A-Za-z0-9_.:-]{1,128}`.
 
-- [ ] **T1.A3 Ops, vectors and ordering [MVP]**
+- [x] **T1.A3 Ops, vectors and ordering [MVP]**
   - Owner: Core engine.
   - Paths: `packages/core/src/ops/**` (all files except `random.ts`), `packages/core/test/ops/**`.
   - Depends: T1.A1, **T1.A2** (replica and record ID generation use `Random`). Req: D1 to D4, R2.1 to R2.3, R2.7, design 3.1 to 3.3.
   - Implement replica, record and op ID generation from an injected `Random`, `buildOp` (seq, lamport and context from accepted ops only), `verifyOpLine` (strict structure, canonical form, D7, hash recomputation; `restore` gives `NOT_SUPPORTED`), version-vector helpers (merge, compare, covers), `happensBefore`, `isConcurrent`, `compareD4`.
   - Done when: unit and property tests pass, including clock independence (R2.4), `restore` rejection, and IDs reproducible from a seeded `Random`.
 
-- [ ] **T1.A4 Schema, field builders, migrations [MVP]**
+- [x] **T1.A4 Schema, field builders, migrations [MVP]**
   - Owner: Core engine.
   - Paths: `packages/core/src/schema/**`, `packages/core/test/schema/**`.
   - Depends: T0.3, T1.A1, T1.B1 (resolver names). Req: R8.1 to R8.5, R8.8, R6.4, R6.5, design 5.1, 5.3.
   - Implement `defineCollection`, `f.string|number|boolean|json|set|rank`, type inference (`InferRecord`), local-write validation, received-op validation of present fields, the migration chain with deep-frozen inputs, `SCHEMA_DOWNGRADE` detection helpers, `max-rank` configuration checks.
   - Done when: type-level tests pass; the migration tests of design 5.3 (repeatability, chain, cross-replica, frozen-input mutation) pass.
 
-- [ ] **T1.A5 Replica open, write path, queries, operation history wiring [MVP]**
+- [x] **T1.A5 Replica open, write path, queries, operation history wiring [MVP]**
   - Owner: Core engine.
   - Paths: `packages/core/src/engine/replica.ts`, `packages/core/src/engine/open.ts`, `packages/core/src/engine/write.ts`, `packages/core/src/engine/read.ts`, `packages/core/test/engine/**` (write, open, read, history tests).
   - Depends: T1.A2, T1.A3, T1.A4, T1.B2, **T1.B3**, **T1.B4**, T1.C1. Req: R1, R2, R2.5, R3.1, R3.2, R5.4, R6.8, R10.4, design 6.0, 7.1, 7.2, 3.4.
   - Implement `createReplica`, replica ID persistence, `meta/state`, `meta/schema` (upgrade rebuild in one transaction, `MIGRATION_FAILED`, `SCHEMA_DOWNGRADE`), the per-replica mutex, `create`/`update`/`delete` with **mandatory `mutationId`** (runtime validation, `mut/` record, `MUTATION_ID_REUSED`, `replayed`), the commit-counter check and retry, `get`, `query`, `subscribe`, `close`, **`collection.history(recordId)`** (reads the `rop/` index and calls `buildOpHistory`), and the wiring of `replica.sync` and `replica.endpoint()` to the sync engine through `SyncHost`. Every write computes `deriveRecord` and the **conflict history IDs (T1.B3) and stores `conflictHistoryIds` in the same transaction as `rec/`, `op/`, `rop/`, `mut/` and `meta/state`.**
   - Done when: the idempotency tests of design 12.3 pass (crash after commit before the response with `failAfterCommit`, payload mismatch, missing `mutationId`, concurrent identical calls); a test reads `conflictHistoryIds` from storage after a write that creates and then supersedes a conflict; the operation-history tests (a) to (g) of design 12.3 pass through the public call; offline-write and restart tests pass.
 
-- [ ] **T1.A6 `applyIncoming`: validation, prefix rule, buffer, promotion [MVP]**
+- [x] **T1.A6 `applyIncoming`: validation, prefix rule, buffer, promotion [MVP]**
   - Owner: Core engine.
   - Paths: `packages/core/src/engine/apply.ts`, `packages/core/src/engine/buffer.ts`, `packages/core/test/engine/apply*.test.ts`.
   - Depends: T1.A5, T1.B2, **T1.B3**. Req: R2.6, R2.7, R4.7, R4.10, R5.1 to R5.3, R16.1, R16.2, design 7.3, 3.5.
   - Implement Phase A1 to A3 (generic checks, application-schema check, three-step identity: conflict scan, collapse, existing check across `op/` and `pend/`), Phase B (per-origin prefix, `SCHEMA_TOO_NEW`, gaps into `pend/` insert-if-absent, the **promotion path**), Phase C (one transaction with identity re-check, commit-counter check, promotion list, `rop/` and `rec/` updates **including `conflictHistoryIds` computed by T1.B3 in the same transaction**, vector and `maxLamport`), the open-time invariant check, and the buffer reset on schema change.
   - Done when: all tests of design 12.3 for pending identity, copies inside a batch, pending promotion (including crash atomicity), validation atomicity and R15.11 (all four cases) pass; a test shows that a conflict created and superseded inside one received batch is present in `conflictHistoryIds` after commit.
 
-- [ ] **T1.A7 Rebuild, hashes, status, diagnostics, logging [MVP]**
+- [x] **T1.A7 Rebuild, hashes, status, diagnostics, logging [MVP]**
   - Owner: Core engine.
   - Paths: `packages/core/src/engine/rebuild.ts`, `packages/core/src/engine/hashes.ts`, `packages/core/src/engine/status.ts`, `packages/core/src/diagnostics/**`, `packages/core/test/diagnostics/**`, `packages/core/test/engine/rebuild*.test.ts`.
   - Depends: T1.A5, T1.A6, T1.B2, **T1.B3**. Req: R6.13, R7.4, R12.1 to R12.4, design 7.4, 7.5.
   - Implement `rebuild()` (recomputes `rec/` **and `conflictHistoryIds` through T1.B3**), `hashes()`, `status()`, the typed `WeaveEvent` stream, the logger hook (default no-op).
   - Done when: for **every R12 field**, this task is complete on its own, without waiting for the sync engine (T1.D3 depends on this task and adds the live checks): (R12.4) `hashes()` returns the state, op-set and conflict-view hashes and equal op sets give equal values; (R7.4, R6.13) `rebuild()` leaves all three hashes, the conflict view, the history log, `conflictHistoryIds` and the operation history unchanged; (R12.3) `status()` returns `pendingOps` per peer (accepted ops not covered by that peer's `ackVector`), `pendingBuffer` (ops in `pend/`, not accepted), the acknowledged vector per registered peer, `lastSyncWall` per peer (informational), the last result per peer including `partial` with blocked origins and the required schema version per origin, and `state`, using peer entries written through storage fixtures; the transitions `idle`, `syncing`, `failed` and the real `lastResult` and `lastSyncWall` after live syncs are asserted later by T1.D3, not here; (R12.1) each event type is emitted by its source and tested: `op.applied`, `op.duplicate`, `op.buffered` and `conflict.new` (carrying `conflictId`) here, `sync.start`, `batch.sent`, `batch.received`, `retry` and `error` in T1.D3; (R12.2) a custom logger receives every event with the documented payload shape, and with no logger configured nothing is written to the console or any sink (a spy on `console` and on the logger hook proves it).
 
-- [ ] **T1.A8 Conflict notifications and repair [MVP]**
+- [x] **T1.A8 Conflict notifications and repair [MVP]**
   - Owner: Core engine.
   - Paths: `packages/core/src/engine/notify.ts`, `packages/core/test/engine/notify*.test.ts`.
   - Depends: T1.A6, T1.B3. Req: D8, R5.5, R6.11, R15.13, design 6.1.
   - Implement mark-then-emit using `conflictHistoryIds`, the startup repair pass over `rec/`, and events carrying the conflict status.
   - Done when: the crash tests of design 12.3 pass (a conflict created and superseded in one batch with a crash before marking, then restart; a second crash between marking and emitting; no ID emitted twice).
 
-- [ ] **T1.A9 Public entry point and API documentation [MVP]**
+- [x] **T1.A9 Public entry point and API documentation [MVP]**
   - Owner: Core engine.
   - Paths: `packages/core/src/index.ts`, `packages/core/test/api/**`.
   - Depends: T1.A5, T1.A7, T1.A8, **T1.B3**, **T1.B4**, **T1.D3** (the `sync` and `endpoint` members it exports). Req: R11.1 to R11.4, design 7.1.
@@ -182,28 +182,28 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 ### Lane B: resolvers, state derivation and histories (Conflict resolution owner)
 
-- [ ] **T1.B1 Built-in resolvers [MVP]**
+- [x] **T1.B1 Built-in resolvers [MVP]**
   - Owner: Conflict resolution.
   - Paths: `packages/core/src/resolvers/**`, `packages/core/test/resolvers/**`.
   - Depends: T0.3. Req: R6.3 to R6.6, design 5.2.
   - Implement `last-writer-wins`, `max`, `min`, `set-union`, `max-rank` as functions of entry metadata only, never of array position.
   - Done when: the direct-call property tests of design 12.2 pass (all permutations up to six entries, random shuffles above, reverse-D4 and interleaved orders, random rank maps, set-union output order).
 
-- [ ] **T1.B2 `deriveRecord` [MVP]**
+- [x] **T1.B2 `deriveRecord` [MVP]**
   - Owner: Conflict resolution.
   - Paths: `packages/core/src/state/derive.ts`, `packages/core/test/state/derive*.test.ts`.
   - Depends: T0.3, T1.B1, T1.A1, T1.A3 (`isConcurrent`, `compareD4`), and the migration function interface from T0.3 (a stub is acceptable until T1.A4 lands). Req: D5, D6, R6.1, R6.2, R6.7, R6.8, design 6.
   - Implement the eight steps (sort, delete rule, migration, `maxCtx` frontier, resolve, field conflict IDs, delete conflict IDs using the shared concurrency helper, visible fields).
   - Done when: unit tests cover concurrent and sequential edits, delete versus concurrent set, `set` after delete, and non-transitive contexts; the order-independence property passes.
 
-- [ ] **T1.B3 Conflict view, history log and history IDs [MVP]**
+- [x] **T1.B3 Conflict view, history log and history IDs [MVP]**
   - Owner: Conflict resolution.
   - Paths: `packages/core/src/state/conflicts.ts`, `packages/core/src/state/history.ts`, `packages/core/test/state/conflicts*.test.ts`, `packages/core/test/state/history*.test.ts`.
   - Depends: T1.B2. Req: D8, R6.2, R6.11 to R6.13, R7.5, design 6.1.
   - Implement the current view, the history replay in D4 order with `open` and `superseded` status, and the function that returns **all conflict IDs of a record's history (open and superseded)** for storage as `conflictHistoryIds`, so that the engine tasks T1.A5, T1.A6 and T1.A7 can store them in the same transaction as `rec/`.
   - Done when: the current view, history replay, `conflictHistoryIds` and the supersession test (R15.14) pass, including delivery in different orders.
 
-- [ ] **T1.B4 Record operation history function [MVP]**
+- [x] **T1.B4 Record operation history function [MVP]**
   - Owner: Conflict resolution.
   - Paths: `packages/core/src/state/opHistory.ts`, `packages/core/test/state/opHistory*.test.ts`.
   - Depends: T0.3, T1.A3 (`isConcurrent`, `compareD4`). Req: R2.5, D3, D4, design 6.0.
@@ -212,28 +212,28 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 ### Lane C: storage adapters (Storage and data owner)
 
-- [ ] **T1.C1 Memory adapter and conformance suite [MVP]**
+- [x] **T1.C1 Memory adapter and conformance suite [MVP]**
   - Owner: Storage and data.
   - Paths: `packages/storage/src/memory/**`, `packages/storage/test/memory/**`, `packages/testing/src/storage/**`.
   - Depends: T0.3. Req: R9.1, R9.3, design 9, 9.2.
   - Implement the memory adapter, `runStorageConformance(factory)` (atomicity including aborted transactions, durability across reopen, scan order and prefixes, snapshot reads, large batches, serialized transactions), and `crashingStorage(wrapped, { failAfterWrites, failAfterCommit })`.
   - Done when: the memory adapter passes the suite.
 
-- [ ] **T1.C2 File adapter: journal, snapshot, scan [MVP]**
+- [x] **T1.C2 File adapter: journal, snapshot, scan [MVP]**
   - Owner: Storage and data.
   - Paths: `packages/storage/src/file/journal.ts`, `packages/storage/src/file/snapshot.ts`, `packages/storage/src/file/manifest.ts`, `packages/storage/src/file/index.ts`, `packages/storage/test/file/journal*.test.ts`, `packages/storage/test/file/rotation*.test.ts`.
   - Depends: T1.C1. Req: R9.6, R10.4, design 9.1.
   - Implement the 32-byte header with `headerCheck`, the SHA-256 trailer, generations and `MANIFEST` with epoch, the read-only scan D1 to D6, the decision procedure, the no-write rule, the ordered writes of open step 5, rotation with six failpoints, and the narrow `onCorruptTail: { truncateAt }` option.
   - Done when: every journal and rotation test of design 9.1 passes: cuts at every byte offset (1 to 31 fail closed with `partial-header`, 32 onward truncated), the length corrupted in all five forms, damage to payload, trailer, header, magic, epoch and txId, mid-log damage, zero-filled tail, byte-for-byte preservation of data files on every failed open, operator truncation accepted and refused cases, rotation failpoints, an old journal beside a newer snapshot, repeated restarts.
 
-- [ ] **T1.C3 File adapter: locking, recovery guard, manual recovery [MVP]**
+- [x] **T1.C3 File adapter: locking, recovery guard, manual recovery [MVP]**
   - Owner: Storage and data.
   - Paths: `packages/storage/src/file/lock.ts`, `packages/storage/src/file/hostid.ts`, `packages/storage/test/file/lock*.test.ts`, `packages/storage/test/file/recovery*.test.ts`.
   - Depends: T1.C2. Req: R9.6(d) to (f), R15.17, R15.20, design 9.1 (locking).
   - Implement `hostId` as `{hostname, bootId, pidNamespace}` with the reliable or unproven rule, `LOCK` with `wx`, the open procedure with `LOCK.recovery` (guard first, revalidation of the observed nonce, ordinary-open refusal and post-create re-check, a guard that is never removed automatically), `STORAGE_LOCKED`, `STORAGE_LOCK_LOST` (nonce re-read before every write), epochs, and no override option.
   - Done when: the lock tests of design 9.1 pass: live holder refused whatever its age; different or unproven `hostId` refused; Linux takeover; Windows and macOS refusal; the reviewed takeover interleaving; an N-process race with a writer counter at every failpoint; guard behaviors; a static test that no public option or CLI flag overrides a lock; and the **manual recovery script test** (six leftover combinations, the guide's six steps followed literally with the guard kept until last, the reverse-order control, the negative tests, and the manual-cleanup concurrency test where ordinary openers receive `STORAGE_LOCKED` throughout) passes once T4.2 provides the guide text it executes.
 
-- [ ] **T1.C4 IndexedDB adapter [MVP]**
+- [x] **T1.C4 IndexedDB adapter [MVP]**
   - Owner: Storage and data.
   - Paths: `packages/storage/src/indexeddb/**`, `packages/storage/test/indexeddb/**`.
   - Depends: T1.C1. Req: R9.1, R9.3, design 9.
@@ -242,33 +242,33 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 ### Lane D: sync engine and transports (Synchronization owner)
 
-- [ ] **T1.D1 Retry policy and `withRetry` [MVP]**
+- [x] **T1.D1 Retry policy and `withRetry` [MVP]**
   - Owner: Synchronization.
   - Paths: `packages/core/src/sync/retry.ts`, `packages/core/test/sync/retry*.test.ts`.
   - Depends: T0.3, T1.A2. Req: R10.2, R10.3, R15.21, design 8.4.
   - Done when: seeded-random tests (using the generator from T1.F1 or a local stub of the same `Random` shape) assert exact delay sequences including the cap; stubbed minimum and maximum `randomFloat` give 0 and just under `min(cap, base * 2^n)`; retryable and non-retryable classification works; a static check shows no `Math.random`.
 
-- [ ] **T1.D2 Schema-aware prefix selection [MVP]**
+- [x] **T1.D2 Schema-aware prefix selection [MVP]**
   - Owner: Synchronization.
   - Paths: `packages/core/src/sync/select.ts`, `packages/core/test/sync/select*.test.ts`.
   - Depends: T0.3. Req: R4.6, R4.10, design 8.3.
   - Done when: unit tests show that an unsupported op stops its origin (later supported ops are withheld, not skipped), other origins are unaffected, `'*'` support accepts everything, and `origins` filtering works.
 
-- [ ] **T1.D3 Sync engine `replica.sync` [MVP]**
+- [x] **T1.D3 Sync engine `replica.sync` [MVP]**
   - Owner: Synchronization.
   - Paths: `packages/core/src/sync/engine.ts`, `packages/core/src/sync/host.ts`, `packages/core/src/protocol.ts`, `packages/core/test/sync/engine*.test.ts`.
   - Depends: T1.A6, T1.A7, T1.D1, T1.D2. Req: R4.1, R4.2, R4.5 to R4.7, R3.5, R12.1, R12.3, design 8.1, 8.2.
   - Implement the pull loop with per-origin isolation retry, `ack` after commit, the push loop with **one origin per request** and per-origin rejection handling, the **stable double read** (`L_start`, `E`, `L_end`) with `maxRounds` and `NOT_SETTLED`, `SyncResult` (`complete`, `partial`, `failed`, `blocked`, `rejectedOrigins`, `promoted`, `settled`), peer registry updates, `replica.endpoint()`, and the sync events (`sync.start`, `batch.sent`, `batch.received`, `retry`, `error`).
   - Done when: scenario tests of design 12.3 pass (interrupted sync, bounded batches, the verification-baseline cases a to d, push-side isolation, R15.11 end to end); `status().state` moves `idle` to `syncing` to `idle` or `failed`; `lastResult` and per-peer `ackVector` are correct after live syncs; **`lastSyncWall` is written only by a `complete` sync**: a test runs a complete sync (timestamp T1 recorded from the fake clock), then a `partial` sync (`PEER_SCHEMA_OLDER`), a `partial` sync (`NOT_SETTLED`) and a `failed` sync, and shows that `lastSyncWall` still equals T1 while `lastResult` shows each newer result, and that a later complete sync moves it to the new time; every sync event has a test with a custom logger; **type-level tests** show that the `SyncResult` union of design 7.1 rejects a `partial` result without a `code`, a `PEER_SCHEMA_OLDER` result with an empty `blocked` list, and a `NOT_SETTLED` result with blocked origins, and runtime tests produce `NOT_SETTLED` (a hook that changes the endpoint every round) and `PEER_SCHEMA_OLDER` with the documented fields and priority (`failed` over `PEER_SCHEMA_OLDER` over `NOT_SETTLED`).
 
-- [ ] **T1.D4 In-process transport and fault-injecting endpoint [MVP]**
+- [x] **T1.D4 In-process transport and fault-injecting endpoint [MVP]**
   - Owner: Synchronization.
   - Paths: `packages/transport/src/in-process/**`, `packages/transport/test/in-process/**`, `packages/testing/src/transport/**`.
   - Depends: T0.3. Req: R9.2, R9.3, design 8.1.
   - Implement the in-process endpoint wrapper, `FaultyEndpoint` (seeded drop, duplicate, reorder, delay, truncate, hook points), and `runTransportConformance`.
   - Done when: the in-process transport passes the transport suite.
 
-- [ ] **T1.D5 HTTP transport client [MVP]**
+- [x] **T1.D5 HTTP transport client [MVP]**
   - Owner: Synchronization.
   - Paths: `packages/transport/src/http/**`, `packages/transport/test/http/**`.
   - Depends: T0.3, T1.D4. Req: R9.2, R4a.1, R4a.10, design 8.1, 10.1.
@@ -277,14 +277,14 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 ### Lane E: relay (Relay owner)
 
-- [ ] **T1.E1 RelayCore [MVP]**
+- [x] **T1.E1 RelayCore [MVP]**
   - Owner: Relay.
   - Paths: `packages/relay/src/core/**`, `packages/relay/test/core/**`, `packages/relay/test/ack/**`.
   - Depends: T0.3, T1.A1, T1.A3 (verify functions via `@weave/core/protocol`), T1.C1. Req: R4a.2 to R4a.8, R2.7, R16.1, R16.2, design 10.2, 10.3.
   - Implement registration, push (Phases A1 and A3 with the three-step identity check, contiguity, single transaction, durable-before-acknowledge, a single in-process queue, transaction re-check), pull (prefix rule from envelope fields only, `origins`, `limit: 0`), ack, `relay/vector`, the acknowledgement rules of design 10.3, byte-for-byte storage of op lines.
   - Done when: unit tests cover the ack cases (push-only, rejected push, pull-only, pull then ack, pull then crash, out-of-order and repeated acks, restart), opacity (no resolver, schema or migration import), and concurrent same-ID pushes with the queue and the re-check each disabled in turn.
 
-- [ ] **T1.E2 HTTP server, CLI, limits, token [MVP]**
+- [x] **T1.E2 HTTP server, CLI, limits, token [MVP]**
   - Owner: Relay.
   - Paths: `packages/relay/src/server/**`, `packages/relay/src/cli.ts`, `packages/relay/test/server/**`, `packages/relay/README.md`.
   - Depends: T1.E1. Req: R4a.1, R4a.9, design 10.1.
@@ -293,14 +293,14 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 ### Lane F: testing tools (Testing and QA owner)
 
-- [ ] **T1.F1 Seeded random, simulator, generators [MVP]**
+- [x] **T1.F1 Seeded random, simulator, generators [MVP]**
   - Owner: Testing and QA.
   - Paths: `packages/testing/src/simulator/**`, `packages/testing/src/generators/**`, `packages/testing/src/faults/**`, `packages/testing/src/index.ts`, `packages/testing/test/**`.
   - Depends: T0.3. Req: R15.2, R15.21, design 12.2.
   - Implement `seededRandom(seed)` (SplitMix64, implements `Random`), a simulator that really runs replicas (write, sync in random pairs, go offline, upgrade) so contexts and Lamport values are genuine, fast-check arbitraries for ops, frontiers and batches, and a fake clock and scheduler.
   - Done when: determinism tests show that the same seed gives the same bytes and the same history; the simulator can drive two replicas to equal hashes once T1.A5 and T1.D3 land.
 
-- [ ] **T1.F2 Cross-package property and scenario suites [MVP]**
+- [x] **T1.F2 Cross-package property and scenario suites [MVP]**
   - Owner: Testing and QA.
   - Paths: `tests/property/**`, `tests/integration/**`.
   - Depends: T1.F1, T1.A6, T1.D3. Req: R15.1 to R15.4, R7, design 12.2, 12.3.
@@ -309,13 +309,13 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 ### Lane G: documentation
 
-- [ ] **T1.G1 README skeletons and quick start [MVP]**
+- [x] **T1.G1 README skeletons and quick start [MVP]**
   - Owner: Developer experience and documentation.
   - Paths: `README.md`, `CHANGELOG.md`, `docs/guides/custom-storage.md`, `docs/guides/custom-transport.md`, `docs/guides/custom-resolver.md`, `docs/guides/migrations.md`.
   - Depends: T0.3. Req: R11.2, R18.1 to R18.3.
   - Done when: the quick start (under 30 lines, using `replica.newMutationId()` or a fixed `mutationId`) is written and is run as a test by T1.G2.
 
-- [ ] **T1.G2 Quick-start test and Gate 1 review [MVP]**
+- [x] **T1.G2 Quick-start test and Gate 1 review [MVP]**
   - Owner: Testing and QA.
   - Paths: `tests/quickstart/**`, `docs/reviews/T1.G2.md`.
   - Depends: T1.A5, T1.A6, T1.A9, T1.D3, T1.D4, T1.C1, T1.G1. Req: R11.2, design 18.3 Gate 1.
@@ -325,61 +325,61 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 ## Phase 2: integration and hardening (Gate 2)
 
-- [ ] **T2.1 Core and state full test pass [MVP]**
+- [x] **T2.1 Core and state full test pass [MVP]**
   - Owner: Core engine (tests under `packages/core/test/engine/**`) and Conflict resolution (tests under `packages/core/test/state/**` and `packages/core/test/resolvers/**`); each fixes its own defects.
   - Paths: `packages/core/test/engine/**`, `packages/core/test/state/**`, `packages/core/test/resolvers/**`.
   - Depends: Gate 1. Req: R15.1 to R15.4, R15.8.
   - Done when: every test listed under lanes A and B passes and each owner records the coverage figures in its package README; no feature is marked complete without a test.
 
-- [ ] **T2.2 File adapter in the engine [MVP]**
+- [x] **T2.2 File adapter in the engine [MVP]**
   - Owner: Testing and QA, with defects fixed by Storage and data in `packages/storage/**`.
   - Paths: `tests/integration/file-adapter/**`.
   - Depends: T1.C2, T1.C3, T1.A6, T1.F2. Req: R9.3, R10.4, R15.17.
   - Done when: the full property and scenario suites also run against the file adapter, and crash-recovery tests with a killed child process pass with each operating system's expected behavior (Linux: takeover; Windows and macOS: `STORAGE_LOCKED`, then the documented manual recovery).
 
-- [ ] **T2.3 Relay end to end [MVP]**
+- [x] **T2.3 Relay end to end [MVP]**
   - Owner: Testing and QA, with defects fixed by Relay in `packages/relay/**` and Synchronization in `packages/transport/**`.
   - Paths: `tests/relay/**`.
   - Depends: T1.D5, T1.E2, T1.F1. Req: R4a.10, R15.1, R15.4, R15.11, R15.16, R15.18.
   - Done when: a real `weave-relay` process with the HTTP transport passes: three-replica convergence; kill -9 and restart losing nothing acknowledged; the relay concurrency test (identical hashes stored and acknowledged once, different hashes keep the first and fail the second with `INTEGRITY_CONFLICT`); schema-aware delivery through the relay (R15.11); push and pull isolation; token and limit tests; acknowledgement cases across restart.
 
-- [ ] **T2.4 Schema-evolution scenario [MVP]**
+- [x] **T2.4 Schema-evolution scenario [MVP]**
   - Owner: Testing and QA, with defects fixed by Core engine in `packages/core/src/schema/**` and `packages/core/src/engine/**`.
   - Paths: `tests/schema-evolution/**`.
   - Depends: T1.A4, T1.A6, T2.3. Req: R8.6, R14.5, R15.12.
   - Done when: v1 replicas upgrade to v2, derive equal state hashes, sync through the relay and converge; a v1-only replica receives only the readable prefix, reports `partial` / `PEER_SCHEMA_OLDER`, and converges after upgrade.
 
-- [ ] **T2.5 Notification and crash windows [MVP]**
+- [x] **T2.5 Notification and crash windows [MVP]**
   - Owner: Core engine.
   - Paths: `packages/core/test/engine/crash*.test.ts`.
   - Depends: T1.A8, T1.C1. Req: R15.13, R5.5.
   - Done when: all crash-window tests pass (before marking, after marking before emit, superseded-in-one-batch, restart repeated).
 
-- [ ] **T2.6 Performance [MVP]**
+- [x] **T2.6 Performance [MVP]**
   - Owner: Security and release.
   - Paths: `scripts/bench.mjs`.
   - Depends: T1.D3, T1.C1. Req: R20.5, design 12.4.
   - Done when: 10,000 ops over 500 records apply in under 5 s and a 1,000-op difference syncs in under 2 s on the in-process transport; CI fails only past 3 times the target.
 
-- [ ] **T2.7 Threat model and security documentation [MVP]**
+- [x] **T2.7 Threat model and security documentation [MVP]**
   - Owner: Security and release.
   - Paths: `docs/threat-model.md`.
   - Depends: T2.3. Req: R16.1 to R16.6, design 11.
   - Done when: the threat model lists the defenses and known limits of design 11 (including the compaction trust assumption and the over-claim limit), documents the relay token, and records that `npm audit` for production dependencies is clean (none exist).
 
-- [ ] **T2.10 Fuzz and malformed-input tests [MVP]**
+- [x] **T2.10 Fuzz and malformed-input tests [MVP]**
   - Owner: Testing and QA.
   - Paths: `tests/fuzz/**`.
   - Depends: T2.3. Req: R16.1, R16.2, R4.7, R15.3.
   - Done when: a fuzz suite sends malformed lines, oversized bodies, non-canonical ops, wrong hashes, duplicate and conflicting IDs, and unsupported values to replicas and to the relay; nothing crashes, nothing is partially written, and the data files are unchanged after each rejected input.
 
-- [ ] **T2.8 Browser tests [MVP]**
+- [x] **T2.8 Browser tests [MVP]**
   - Owner: Testing and QA.
   - Paths: `tests/browser/**` (including the Playwright config), `docs/reviews/T2.8.md` (only if findings exist).
   - Depends: T1.A1, T1.C4. Req: R15.10, R9.3.
   - Done when: Playwright in Chromium runs the canonical vectors with bytes and hashes identical to Node, and the IndexedDB adapter passes the storage conformance suite.
 
-- [ ] **T2.9 Independent review of lanes A to F [MVP], review-only**
+- [x] **T2.9 Independent review of lanes A to F [MVP], review-only**
   - Owner: independent reviewer agents (Testing and QA), one per lane.
   - Paths (read): `packages/core/**`, `packages/storage/**`, `packages/transport/**`, `packages/relay/**`, `packages/testing/**`, `tests/**`; (write): `docs/reviews/T2.9-<lane>.md`.
   - Depends: T2.1 to T2.8, T2.10. Req: R15.7, design 18.3 Gate 2.
@@ -391,14 +391,14 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 ### GHOSTLINE (GHOSTLINE owner)
 
-- [ ] **T3.G1 GHOSTLINE model and logic [MVP]**
+- [x] **T3.G1 GHOSTLINE model and logic [MVP]**
   - Owner: GHOSTLINE.
   - Paths: `apps/ghostline/src/model.ts`, `apps/ghostline/src/logic.ts`, `apps/ghostline/test/logic*.test.ts`.
   - Depends: Gate 1. Req: R13.1 to R13.5, design 13.1.
   - Collections `announcements` and `requests` with the resolvers of design 13.1; each user action gets one `mutationId` stored with the pending action before the call.
   - Done when: logic tests cover offline create, publish, claim conflict, tag union, delete versus edit, and a retry with the same `mutationId` returning `replayed`.
 
-- [ ] **T3.G2 GHOSTLINE UI and scripts [MVP]**
+- [x] **T3.G2 GHOSTLINE UI and scripts [MVP]**
   - Owner: GHOSTLINE.
   - Paths: `apps/ghostline/index.html`, `apps/ghostline/vite.config.ts`, `apps/ghostline/package.json`, `apps/ghostline/tsconfig.json`, `apps/ghostline/src/app.ts`, `apps/ghostline/src/demo.ts`, `apps/ghostline/test/e2e/**`, `apps/ghostline/README.md`.
   - Depends: T3.G1, T2.3, T1.C4, T1.D5. Req: R13.5, R13.6, R14a, design 13.
@@ -407,14 +407,14 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 ### FIELDNOTE (FIELDNOTE owner)
 
-- [ ] **T3.F1 FIELDNOTE model, migration, logic [MVP]**
+- [x] **T3.F1 FIELDNOTE model, migration, logic [MVP]**
   - Owner: FIELDNOTE.
   - Paths: `apps/fieldnote/src/model.ts`, `apps/fieldnote/src/logic.ts`, `apps/fieldnote/test/logic*.test.ts`.
   - Depends: Gate 1. Req: R14.1 to R14.6, design 13.2.
   - Collections `inspections` (v1 and v2 with the `location` split migration) and `observations` with `max-rank` status and `max` severity; `mutationId` handling as in T3.G1.
   - Done when: logic tests cover concurrent field edits (merged), status conflict (more advanced status wins), severity conflict (higher wins), the migration, the conflict history view data, and operation history of an inspection.
 
-- [ ] **T3.F2 FIELDNOTE UI and scripts [MVP]**
+- [x] **T3.F2 FIELDNOTE UI and scripts [MVP]**
   - Owner: FIELDNOTE.
   - Paths: `apps/fieldnote/index.html`, `apps/fieldnote/vite.config.ts`, `apps/fieldnote/package.json`, `apps/fieldnote/tsconfig.json`, `apps/fieldnote/src/app.ts`, `apps/fieldnote/src/demo.ts`, `apps/fieldnote/test/e2e/**`, `apps/fieldnote/README.md`.
   - Depends: T3.F1, T2.3, T2.4, T1.C4. Req: R14.3 to R14.7, design 13.2.
@@ -423,13 +423,13 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 ### Shared app checks
 
-- [ ] **T3.X1 Boundary and difference checks [MVP]**
+- [x] **T3.X1 Boundary and difference checks [MVP]**
   - Owner: Security and release for scripts and fixtures; Developer experience and documentation for the generated table file.
   - Paths: `scripts/check-boundaries.mjs`, `scripts/gen-differences.mjs`, `scripts/fixtures/**` (Security and release); `docs/app-differences.md` (Developer experience and documentation).
   - Depends: T3.G1, T3.F1, T0.5. Req: R14a.1, R14a.3.
   - Done when: `check-boundaries` passes on both apps; `gen-differences` prints the differences table from each app's `model.ts` resolver declarations and `docs/app-differences.md` equals its output (CI compares them); each row maps to a demo step output; the check fails on a fixture app that imports internals or contains sync or hashing identifiers.
 
-- [ ] **T3.X2 Independent review of both apps [MVP], review-only**
+- [x] **T3.X2 Independent review of both apps [MVP], review-only**
   - Owner: independent reviewer agents (Testing and QA).
   - Paths (read): `apps/ghostline/**`, `apps/fieldnote/**`, `docs/app-differences.md`; (write): `docs/reviews/T3.X2.md`.
   - Depends: T3.G2, T3.F2, T3.X1, Gate 2. Req: R13, R14, R14a, design 18.3 Gate 3.
@@ -439,43 +439,43 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 ## Phase 4: documentation, packaging, release (Gate 4)
 
-- [ ] **T4.1 ADRs 0004 to 0010, 0013 and 0014 [MVP]**
+- [x] **T4.1 ADRs 0004 to 0010, 0013 and 0014 [MVP]**
   - Owner: Architecture and research.
   - Paths: `docs/adr/0004-*.md` to `docs/adr/0010-*.md`, `docs/adr/0013-*.md`, `docs/adr/0014-*.md`.
   - Depends: Gate 2. Req: R17.2, design 16.
   - Done when: every ADR listed in design 16 exists with context, options, decision and consequences, including ADR-0006 (with the compaction trust assumption), ADR-0007 (acknowledgement rules), ADR-0008 (all-or-nothing validation), ADR-0009 (journal format), ADR-0014 (`mutationId`).
 
-- [ ] **T4.2 Guides, including storage recovery [MVP]**
+- [x] **T4.2 Guides, including storage recovery [MVP]**
   - Owner: Developer experience and documentation.
   - Paths: `docs/guides/custom-storage.md`, `docs/guides/custom-transport.md`, `docs/guides/custom-resolver.md`, `docs/guides/migrations.md`, `docs/guides/storage-recovery.md`.
   - Depends: Gate 2, T1.G1. Req: R18.3, R9.6(f).
   - Done when: `storage-recovery.md` holds the six-step manual recovery procedure (stop all, confirm no holder, back up, inspect, keep or create the guard and remove stale files and `LOCK` while it remains, remove the guard last, reopen and validate) and the corruption guidance; the T1.C3 script executes the guide's steps and passes.
 
-- [ ] **T4.3 API docs and READMEs [MVP]**
+- [x] **T4.3 API docs and READMEs [MVP]**
   - Owner: Developer experience and documentation.
   - Paths: `README.md`, `CHANGELOG.md`, `typedoc.json`, `docs/api/**`.
   - Depends: T1.A9, T1.G1, Gate 3. Req: R11.3, R11.4, R18.1, R18.2.
   - Done when: every exported symbol is documented (including `collection.history`, `OpHistoryEntry`, `newMutationId`); the root README has purpose, install, quick start, architecture summary and links to both demos; READMEs for packages and apps (owned by their owners) exist and are linked; **`CHANGELOG.md` has the `0.1.0` release entry** listing the public API and the [ADV] features that are not implemented.
 
-- [ ] **T4.4 Kiro Crew explanation and demo plan [MVP]**
+- [x] **T4.4 Kiro Crew explanation and demo plan [MVP]**
   - Owner: Developer experience and documentation.
   - Paths: `docs/kiro-crew.md`, `docs/demo-plan.md`.
   - Depends: Gate 3. Req: R19.4, R19.5.
   - Done when: `kiro-crew.md` lists the workstreams, owners, dependency graph, gates and reviewer checks and which agents produced what; `demo-plan.md` has steps, expected output and a recording script.
 
-- [ ] **T4.5 Disclosure and license check [MVP]**
+- [x] **T4.5 Disclosure and license check [MVP]**
   - Owner: Security and release.
   - Paths: `scripts/check-license.mjs`, `LICENSE`, `docs/disclosure.md`.
   - Depends: Gate 3. Req: R19.1, R19.6.
   - Done when: `docs/disclosure.md` states that no code existed before this project and notes the parent-repository situation (the root README links to it); `check:license` passes; every `package.json` has `license: MIT`; `.kiro` is tracked.
 
-- [ ] **T4.6 Full CI matrix and reproducible build [MVP]**
+- [x] **T4.6 Full CI matrix and reproducible build [MVP]**
   - Owner: Security and release.
   - Paths: `.github/workflows/ci.yml`, `scripts/**`, and the Git release tag `v0.1.0` (a ref, created by this task).
   - Depends: Gate 3, T4.3, T4.5. Req: R15.5, R19, R20.2, R20.3.
   - Done when: CI is green on Ubuntu, Windows and macOS (including the per-platform lock tests), Playwright on Ubuntu, benchmarks, audit, and a job that builds twice and compares output hashes; **the annotated tag `v0.1.0` exists on the commit that passed CI and contains the `CHANGELOG.md` entry from T4.3.** If T4.7 finds issues, they are fixed and this task's owner recreates the tag on the fixed commit before T4.7 records its pass.
 
-- [ ] **T4.7 Final independent review [MVP], review-only**
+- [x] **T4.7 Final independent review [MVP], review-only**
   - Owner: independent reviewer agents (Testing and QA). This task changes no product file and creates no tag or changelog entry.
   - Paths (read): the whole repository from a clean clone at the tagged commit, including the `v0.1.0` tag (T4.6) and `CHANGELOG.md` (T4.3); (write): `docs/reviews/T4.7.md` only.
   - Depends: T4.1 to T4.6. Req: R15.7, requirements section 4.

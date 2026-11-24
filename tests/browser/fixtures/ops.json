@@ -1,0 +1,65 @@
+[
+  {
+    "input": {
+      "replicaId": "aaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "vector": {},
+      "maxLamport": 0,
+      "collection": "notes",
+      "recordId": "r1",
+      "kind": "set",
+      "schemaVersion": 1,
+      "fields": {
+        "title": "plain"
+      }
+    },
+    "line": "{\"collection\":\"notes\",\"context\":{},\"fields\":{\"title\":\"plain\"},\"hash\":\"6b25d85b7172d3bc931ec915ab28d0d583e3b3aedc1f26f7467b9ae192a40a2a\",\"kind\":\"set\",\"lamport\":1,\"recordId\":\"r1\",\"replicaId\":\"aaaaaaaaaaaaaaaaaaaaaaaaaa\",\"schemaVersion\":1,\"seq\":1}"
+  },
+  {
+    "input": {
+      "replicaId": "bbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "vector": {
+        "aaaaaaaaaaaaaaaaaaaaaaaaaa": 1
+      },
+      "maxLamport": 1,
+      "collection": "notes",
+      "recordId": "r1",
+      "kind": "set",
+      "schemaVersion": 2,
+      "fields": {
+        "title": "café   😀 €",
+        "n": 0.1,
+        "big": 9007199254740991,
+        "neg": 0,
+        "nested": {
+          "z": [
+            true,
+            null,
+            {
+              "b": 1,
+              "a": 2
+            }
+          ]
+        },
+        "": 1,
+        "𐀀": 2
+      }
+    },
+    "line": "{\"collection\":\"notes\",\"context\":{\"aaaaaaaaaaaaaaaaaaaaaaaaaa\":1},\"fields\":{\"big\":9007199254740991,\"n\":0.1,\"neg\":0,\"nested\":{\"z\":[true,null,{\"a\":2,\"b\":1}]},\"title\":\"café   😀 €\",\"𐀀\":2,\"\":1},\"hash\":\"e62359fbf5970108d135f0cd88990fd66a0b57677df3c9523a4a1c39fdfe6973\",\"kind\":\"set\",\"lamport\":2,\"recordId\":\"r1\",\"replicaId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbb\",\"schemaVersion\":2,\"seq\":1}"
+  },
+  {
+    "input": {
+      "replicaId": "aaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "vector": {
+        "aaaaaaaaaaaaaaaaaaaaaaaaaa": 1,
+        "bbbbbbbbbbbbbbbbbbbbbbbbbb": 1
+      },
+      "maxLamport": 2,
+      "collection": "notes",
+      "recordId": "r1",
+      "kind": "delete",
+      "schemaVersion": 1,
+      "fields": {}
+    },
+    "line": "{\"collection\":\"notes\",\"context\":{\"aaaaaaaaaaaaaaaaaaaaaaaaaa\":1,\"bbbbbbbbbbbbbbbbbbbbbbbbbb\":1},\"fields\":{},\"hash\":\"d98a24ed69cb500dd0a0e048bfd70703556689c5626675e07ba64bea386159e8\",\"kind\":\"delete\",\"lamport\":3,\"recordId\":\"r1\",\"replicaId\":\"aaaaaaaaaaaaaaaaaaaaaaaaaa\",\"schemaVersion\":1,\"seq\":2}"
+  }
+]

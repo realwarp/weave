@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FIELDNOTE</title>
+    <style>
+      :root {
+        font-family: system-ui, sans-serif;
+        color-scheme: light dark;
+      }
+      body {
+        margin: 0 auto;
+        max-width: 1100px;
+        padding: 1rem;
+      }
+      header {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      h1 {
+        margin: 0;
+        letter-spacing: 0.1em;
+      }
+      main {
+        display: grid;
+        grid-template-columns: 1fr 1.3fr;
+        gap: 1.5rem;
+      }
+      @media (max-width: 800px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+      }
+      section {
+        border: 1px solid #8884;
+        border-radius: 8px;
+        padding: 0.75rem;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 0.3rem;
+        border-top: 1px solid #8883;
+        vertical-align: top;
+      }
+      tr.selected {
+        outline: 2px solid #48f8;
+      }
+      form {
+        display: grid;
+        gap: 0.4rem;
+        margin-bottom: 0.75rem;
+      }
+      .meta {
+        opacity: 0.7;
+        font-size: 0.85em;
+      }
+      .badge {
+        border: 1px solid #8886;
+        border-radius: 999px;
+        padding: 0 0.5em;
+        font-size: 0.8em;
+      }
+      button {
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>FIELDNOTE</h1>
+      <span>worker: <strong id="device"></strong> <span id="schema" class="badge"></span></span>
+      <button id="sync" type="button">Sync</button>
+      <span id="status" role="status"></span>
+    </header>
+    <main>
+      <section aria-labelledby="list-h">
+        <h2 id="list-h">Inspections</h2>
+        <form id="insp-form">
+          <input name="title" placeholder="Inspection title" required />
+          <input name="site" placeholder="Site" />
+          <input name="zone" placeholder="Zone" />
+          <button type="submit">New inspection</button>
+        </form>
+        <table>
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Where</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="inspections"></tbody>
+        </table>
+      </section>
+      <section aria-labelledby="detail-h">
+        <h2 id="detail-h">Detail</h2>
+        <div id="detail" class="meta">Select an inspection.</div>
+      </section>
+      <section aria-labelledby="conflicts-h" style="grid-column: 1 / -1">
+        <h2 id="conflicts-h">Conflict history</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Record</th>
+              <th>Field</th>
+              <th>Competing values</th>
+              <th>Result</th>
+              <th>State</th>
+            </tr>
+          </thead>
+          <tbody id="conflicts"></tbody>
+        </table>
+      </section>
+    </main>
+    <script type="module" src="./src/app.ts"></script>
+  </body>
+</html>

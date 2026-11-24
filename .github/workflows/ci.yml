@@ -2,8 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, 'release/**']
+    tags: ['v*']
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -30,8 +32,15 @@ jobs:
       - run: npm run typecheck:tests
       - run: npm test
       - run: npm run check:boundaries
+      - run: node scripts/gen-differences.mjs --check
+      - run: npm run docs:api
       - run: npm run check:license
       - run: npm run audit
+      # Development tools are audited and reported, not gated: fixing the current findings needs
+      # major upgrades (Vitest 2 -> 5, TypeDoc), recorded in docs/threat-model.md.
+      - name: npm audit (development tools, report only)
+        run: npm audit
+        continue-on-error: true
 
   bench:
     name: Benchmarks (ubuntu)
@@ -60,7 +69,11 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npx playwright install --with-deps chromium
-      - run: npx playwright test
+      - run: npm run test:browser
+      - run: npx playwright test -c apps/ghostline/test/e2e
+      - run: npx playwright test -c apps/fieldnote/test/e2e
+      - run: npm run demo:ghostline
+      - run: npm run demo:fieldnote
 
   reproducible-build:
     name: Reproducible build

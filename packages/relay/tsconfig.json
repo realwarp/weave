@@ -13,6 +13,9 @@
     },
     {
       "path": "../storage"
+    },
+    {
+      "path": "../transport"
     }
   ]
 }

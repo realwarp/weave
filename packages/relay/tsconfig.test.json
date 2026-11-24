@@ -8,7 +8,19 @@
     "declarationMap": false,
     "lib": ["ES2022", "DOM"],
     "types": ["node"],
-    "rootDir": "../.."
+    "rootDir": "../..",
+    "paths": {
+      "@weave/core": ["../core/src/index.ts"],
+      "@weave/core/protocol": ["../core/src/protocol.ts"],
+      "@weave/storage/memory": ["../storage/src/memory/index.ts"],
+      "@weave/storage/file": ["../storage/src/file/index.ts"],
+      "@weave/storage/indexeddb": ["../storage/src/indexeddb/index.ts"],
+      "@weave/transport/in-process": ["../transport/src/in-process/index.ts"],
+      "@weave/transport/http": ["../transport/src/http/index.ts"],
+      "@weave/relay": ["../relay/src/index.ts"],
+      "@weave/testing": ["../testing/src/index.ts"]
+    },
+    "baseUrl": "."
   },
   "include": ["src", "test"]
 }
