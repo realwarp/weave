@@ -6,8 +6,9 @@
  * - A strike is one request (or one sync) whose data this replica rejected as invalid: one of
  *   `INVALID_DATA_CODES`. Schema mismatch (`SCHEMA_TOO_NEW`, `NOT_SUPPORTED`), authorization
  *   (`UNAUTHORIZED`), removal and transport errors are not strikes: they are not invalid data.
- * - `threshold` strikes within `windowMs` ban the peer for `banMs`. When the ban ends the peer
- *   starts again with no strikes.
+ * - `threshold` strikes within `windowMs` ban the peer for `banMs`. A strike counts while it is
+ *   less than `windowMs` old; one exactly `windowMs` old no longer counts (ADR-0015). When the
+ *   ban ends the peer starts again with no strikes.
  * - The book is in memory: a restart lifts every ban (monotonic time has no meaning across
  *   processes). Valid peers are never affected: bans are per peer ID.
  */

@@ -53,6 +53,10 @@ doc comment. Rules:
 
 - **Off by default.** `createReplica({ ban: { enabled: true } })`; defaults 3 strikes within
   60 s ban for 5 min. Invalid settings fail at `createReplica` with `VALIDATION_FAILED`.
+- **Window boundary.** R10.5 and the T5.7 task do not define whether the window edge is inclusive.
+  Decision: a strike counts while it is less than `windowMs` old (`now - t < windowMs`); a strike
+  exactly `windowMs` old no longer counts. So "3 strikes within 60 s" means three strikes whose
+  first and last are less than 60 s apart. A test pins `N-W-1`, `N-W` and `N-W+1`.
 - **Monotonic time only.** The ban book reads the injected `Scheduler.monotonicMs()`; wall-clock
   changes neither lift nor extend a ban. The book is in memory, so a restart lifts every ban.
 - **What is a strike.** One request, or one sync, whose data this replica rejected as invalid:

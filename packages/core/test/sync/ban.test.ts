@@ -104,6 +104,21 @@ describe('BanBook (pure, monotonic time)', () => {
     expect(book.remainingMs('q')).toBe(0);
   });
 
+  it('window boundary: a strike counts while it is less than windowMs old (N-W-1, N-W, N-W+1)', () => {
+    // threshold 2: a ban happens exactly when the earlier strike still counts.
+    const W = 1_000;
+    const counts = (age: number): boolean => {
+      let now = 10_000 - age;
+      const book = new BanBook({ ...BAN, threshold: 2, windowMs: W }, () => now);
+      book.strike('p');
+      now = 10_000;
+      return book.strike('p');
+    };
+    expect(counts(W + 1)).toBe(false); // N - W - 1: outside
+    expect(counts(W)).toBe(false); // N - W: exactly windowMs old, no longer counts
+    expect(counts(W - 1)).toBe(true); // N - W + 1: inside
+  });
+
   it('defaults and option validation', () => {
     expect(DEFAULT_BAN).toEqual({ threshold: 3, windowMs: 60_000, banMs: 300_000 });
     for (const bad of [{ threshold: 0 }, { windowMs: -1 }, { banMs: 1.5 }])
