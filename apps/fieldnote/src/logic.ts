@@ -205,25 +205,27 @@ export async function conflictHistory(s: Session): Promise<ConflictRow[]> {
     v === undefined ? '(none)' : typeof v === 'string' ? v : JSON.stringify(v);
   const rows: ConflictRow[] = [];
   for (const c of await s.replica.conflicts.history()) {
-    const col = c.collection === 'observations' ? obs(s) : insp(s);
-    const ops = await col.history(c.recordId);
-    const key = (o: { replicaId: string; seq: number }) => `${o.replicaId}:${o.seq}`;
-    // The competing edits: ops on this field that ran at the same time as another op on it.
-    const touching = ops.filter((h) =>
-      c.kind === 'delete' ? true : c.field !== undefined && c.field in h.fields,
-    );
-    const ids = new Set(touching.map((h) => key(h.opId)));
-    const competing = touching.filter((h) => h.concurrentWith.some((o) => ids.has(key(o))));
+    // The competing values are the conflict's frontier. For a field conflict each entry carries
+    // the value as resolved, i.e. after schema migration, so a v1 `location` edit shows as its
+    // `site` or `zone` part. Raw `collection.history()` is not used here: it returns ops as written.
+    let values: string[];
+    if (c.kind === 'field') {
+      values = c.frontier.map((e) => show(e.value));
+    } else {
+      const col = c.collection === 'observations' ? obs(s) : insp(s);
+      const kinds = new Map(
+        (await col.history(c.recordId)).map((h) => [`${h.opId.replicaId}:${h.opId.seq}`, h.kind]),
+      );
+      values = c.frontier.map((e) =>
+        kinds.get(`${e.opId.replicaId}:${e.opId.seq}`) === 'delete' ? 'delete' : 'edit',
+      );
+    }
     rows.push({
       conflictId: c.conflictId,
       collection: c.collection,
       recordId: c.recordId,
       field: c.kind === 'delete' ? '(deleted)' : (c.field ?? ''),
-      values: competing.map((h) =>
-        h.kind === 'delete'
-          ? 'delete'
-          : show(c.field === undefined ? undefined : h.fields[c.field]),
-      ),
+      values,
       resolved: c.kind === 'delete' ? 'deleted' : show(c.resolved),
       status: c.status,
     });

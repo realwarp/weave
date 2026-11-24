@@ -119,7 +119,16 @@ export async function notices(s: Session): Promise<Notice[]> {
   const out: Notice[] = [];
   for (const c of await s.replica.conflicts.history()) {
     const col = c.collection === 'requests' ? req(s) : ann(s);
-    const mine = (await col.history(c.recordId)).filter((h) => h.opId.replicaId === s.replica.id);
+    // Only this device's ops IN the conflict frontier count: an earlier op that was causally
+    // superseded before the conflict happened is not part of it.
+    const inFrontier = new Set(
+      c.frontier
+        .filter((e) => e.opId.replicaId === s.replica.id)
+        .map((e) => `${e.opId.replicaId}:${e.opId.seq}`),
+    );
+    const mine = (await col.history(c.recordId)).filter((h) =>
+      inFrontier.has(`${h.opId.replicaId}:${h.opId.seq}`),
+    );
     const base = {
       conflictId: c.conflictId,
       collection: c.collection,
@@ -127,7 +136,9 @@ export async function notices(s: Session): Promise<Notice[]> {
       open: open.has(c.conflictId),
     };
     if (c.kind === 'field' && c.field === 'claimedBy') {
-      const iClaimed = mine.some((h) => h.fields['claimedBy'] === s.user);
+      const iClaimed = c.frontier.some(
+        (e) => e.opId.replicaId === s.replica.id && e.value === s.user,
+      );
       const winner = typeof c.resolved === 'string' ? c.resolved : 'someone';
       out.push(
         iClaimed && c.resolved !== s.user
@@ -143,15 +154,8 @@ export async function notices(s: Session): Promise<Notice[]> {
             },
       );
     } else if (c.kind === 'delete') {
-      const all = await col.history(c.recordId);
-      const deletes = new Set(
-        all.filter((h) => h.kind === 'delete').map((h) => `${h.opId.replicaId}:${h.opId.seq}`),
-      );
-      // My edit was lost when it ran at the same time as a delete.
-      const iEdited = mine.some(
-        (h) =>
-          h.kind === 'set' && h.concurrentWith.some((o) => deletes.has(`${o.replicaId}:${o.seq}`)),
-      );
+      // A delete conflict's frontier is the delete and the edits concurrent with it.
+      const iEdited = mine.some((h) => h.kind === 'set');
       out.push(
         iEdited
           ? {
