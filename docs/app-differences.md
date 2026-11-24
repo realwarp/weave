@@ -26,11 +26,12 @@ Workflow: publish and claim: announcements and help requests.
 | `announcements` v1 | `body` | last-writer-wins | `concurrent` |
 | `announcements` v1 | `status` | max-rank: draft < published | `result` |
 | `announcements` v1 | `author` | last-writer-wins | `offline` |
-| `requests` v1 | `title` | last-writer-wins | `offline` |
-| `requests` v1 | `details` | last-writer-wins | `offline` |
-| `requests` v1 | `tags` | set-union | `result` |
-| `requests` v1 | `claimedBy` | last-writer-wins | `notices` |
-| `requests` v1 | `state` | max-rank: open < fulfilled | `replay` |
+| `requests` v2 | `title` | last-writer-wins | `offline` |
+| `requests` v2 | `details` | last-writer-wins | `offline` |
+| `requests` v2 | `tags` | set-union | `result` |
+| `requests` v2 | `claimedBy` | last-writer-wins | `notices` |
+| `requests` v2 | `state` | max-rank: open < fulfilled | `replay` |
+| `requests` v2 | `meToo` | counter | `metoo` |
 
 ## FIELDNOTE
 

@@ -28,4 +28,25 @@ test('two devices share a request and a claim through the relay', async ({ brows
   await alice.getByRole('button', { name: 'Sync' }).click();
   await expect(alice.locator('#requests li .meta')).toContainText(`claimed by bob${run}`);
   await expect(alice.locator('#requests .tag')).toHaveText(['flood', 'urgent']);
+
+  // [ADV] 0.2.0 (T5.9): both tap "me too" before syncing; both taps count on both devices.
+  await alice
+    .locator('#requests li')
+    .getByRole('button', { name: /^Me too/ })
+    .click();
+  await bob
+    .locator('#requests li')
+    .getByRole('button', { name: /^Me too/ })
+    .click();
+  await expect(alice.locator('#requests li').getByRole('button', { name: /^Me too/ })).toHaveText(
+    'Me too (1)',
+  );
+  for (const page of [alice, bob, alice]) {
+    await page.getByRole('button', { name: 'Sync' }).click();
+    await expect(page.getByRole('status')).toHaveText('Synced.');
+  }
+  for (const page of [alice, bob])
+    await expect(page.locator('#requests li').getByRole('button', { name: /^Me too/ })).toHaveText(
+      'Me too (2)',
+    );
 });

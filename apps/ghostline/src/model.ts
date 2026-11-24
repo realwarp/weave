@@ -22,9 +22,15 @@ export const announcements = defineCollection({
   },
 });
 
+/**
+ * Version 2 (0.2.0, R13.7) adds the "me too" counter. Version 1 requests upgrade unchanged (they
+ * have no counter yet, which reads as 0); a 0.1.0 app is told it needs an update instead of
+ * rejecting the new field.
+ */
 export const requests = defineCollection({
   name: 'requests',
-  version: 1,
+  version: 2,
+  migrations: { 1: ({ fields }) => ({ ...fields }) },
   fields: {
     /** @demo offline */
     title: f.string({ required: true, resolver: 'last-writer-wins' }),
@@ -36,6 +42,11 @@ export const requests = defineCollection({
     claimedBy: f.string({ resolver: 'last-writer-wins' }),
     /** @demo replay */
     state: f.rank(['open', 'fulfilled'], { required: true }),
+    /**
+     * "Me too" taps: every device's taps are summed (counter resolver, R13.7).
+     * @demo metoo
+     */
+    meToo: f.counter(),
   },
 });
 
