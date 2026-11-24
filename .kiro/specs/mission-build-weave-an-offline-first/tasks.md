@@ -469,7 +469,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Depends: Gate 3. Req: R19.1, R19.6.
   - Done when: `docs/disclosure.md` states that no code existed before this project and notes the parent-repository situation (the root README links to it); `check:license` passes; every `package.json` has `license: MIT`; `.kiro` is tracked.
 
-- [ ] **T4.6 Full CI matrix and reproducible build [MVP]**
+- [x] **T4.6 Full CI matrix and reproducible build [MVP]**
   - Owner: Security and release.
   - Paths: `.github/workflows/ci.yml`, `scripts/**`, and the Git release tag `v0.1.0` (a ref, created by this task).
   - Depends: Gate 3, T4.3, T4.5. Req: R15.5, R19, R20.2, R20.3.
