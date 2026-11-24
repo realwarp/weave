@@ -22,7 +22,7 @@ import {
   isCounterState,
   mergeCounterStates,
 } from '../../src/resolvers/counter.js';
-import { defineCollection, f } from '../../src/schema/index.js';
+import { defineCollection, f, validateLocalWrite } from '../../src/schema/index.js';
 
 const R = [
   'aaaaaaaaaaaaaaaaaaaaaaaaaa',
@@ -147,6 +147,19 @@ async function exchange(a: Replica, b: Replica): Promise<void> {
   expect((await a.sync(b.endpoint())).status).toBe('complete');
   expect((await b.sync(a.endpoint())).status).toBe('complete');
 }
+
+describe('local write validation of counter deltas (review T5.4 F-f)', () => {
+  it('validateLocalWrite itself rejects non-integer deltas, before the engine merges', () => {
+    expect(validateLocalWrite(posts, 'update', { likes: -3 })).toEqual({ likes: -3 });
+    for (const bad of [0.5, '1', null, true, { n: 1 }])
+      expect(() => validateLocalWrite(posts, 'update', { likes: bad })).toThrow(
+        expect.objectContaining({
+          code: 'VALIDATION_FAILED',
+          message: expect.stringContaining('safe integer delta') as string,
+        }) as Error,
+      );
+  });
+});
 
 describe('counter fields through replicas (R6.10, R15.9)', () => {
   it('writes take deltas, reads give totals, and a retry adds nothing', async () => {

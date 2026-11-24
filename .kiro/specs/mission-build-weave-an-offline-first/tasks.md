@@ -514,7 +514,7 @@ Each task is its own gate with an independent review. **The order of requirement
   - Done when: both are deterministic functions of the op set, pass order-independence and convergence properties, and `restore` is accepted only with the feature enabled.
   - Review: independent reviewer agent (Testing and QA); report `docs/reviews/T5.3.md`; the task merges only after the report records no open findings.
 
-- [ ] **T5.4 [ADV] Counter resolver and custom resolvers**
+- [x] **T5.4 [ADV] Counter resolver and custom resolvers**
   - Owner: Conflict resolution.
   - Paths: `packages/core/src/resolvers/counter.ts`, `packages/core/src/resolvers/custom.ts`, `packages/core/src/resolvers/assert.ts`, `packages/core/test/resolvers/counter*.test.ts`, `packages/core/test/resolvers/custom*.test.ts`.
   - Depends: Gate 4, T1.B1, T5.3. Req: R6.10, R15.9.
