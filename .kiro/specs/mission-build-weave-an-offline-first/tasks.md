@@ -537,7 +537,7 @@ Each task is its own gate with an independent review. **The order of requirement
   - Done when: a hook is called before applying or sending ops and can reject; ops claiming a replica ID the authenticated sender may not write as are rejected with a typed error and no change; tests cover allow, deny and identity mismatch on both sides.
   - Review: independent reviewer agent (Testing and QA); report `docs/reviews/T5.6.md`; the task merges only after the report records no open findings.
 
-- [ ] **T5.7 [ADV] Peer ban**
+- [x] **T5.7 [ADV] Peer ban**
   - Owner: Synchronization.
   - Paths: `packages/core/src/sync/ban.ts`, `packages/core/test/sync/ban*.test.ts`.
   - Depends: Gate 4, T5.6 (uses `rejectedOrigins`). Req: R10.5.
