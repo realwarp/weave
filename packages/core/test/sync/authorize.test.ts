@@ -113,6 +113,17 @@ describe('authenticated identity on the endpoint (R16.3)', () => {
     expect(await fingerprint(b)).toEqual(before);
   });
 
+  it('a direct pull that claims another replica ID is refused (no reading as someone else)', async () => {
+    const { a, b } = await trio();
+    const ep = a.endpoint({ auth: { principal: 'bob', writableAs: [b.id] } });
+    await expect(
+      ep.pull({ replicaId: 'z'.repeat(26), vector: {}, support: { notes: 1 }, limit: 10 }),
+    ).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+    // Its own ID is fine, including a vector-only pull.
+    const own = await ep.pull({ replicaId: b.id, vector: {}, support: { notes: 1 }, limit: 10 });
+    expect(own.ops.length).toBeGreaterThan(0);
+  });
+
   it('a payload cannot override the bound identity', async () => {
     const { a, b } = await trio();
     const before = await fingerprint(b);

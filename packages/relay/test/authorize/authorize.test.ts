@@ -246,6 +246,37 @@ describe('HTTP details', () => {
     }
   });
 
+  it('the shared secret is not an identity: the hook sees no auth for it, and the principal for a mapped secret', async () => {
+    const seen: Array<AuthContext | undefined> = [];
+    const { core } = await openRelay(createMemoryBacking(), {
+      authorize: (req) => {
+        seen.push(req.auth);
+        return true;
+      },
+    });
+    const running = await listen(
+      createRelayServer({ core, token: 'shared', identities: [FORWARDER] }),
+      0,
+    );
+    try {
+      const ops = await makeOps(A, 1);
+      await httpTransport({ baseUrl: running.url, token: 'shared' }).push({
+        replicaId: A,
+        support,
+        ops,
+      });
+      await httpTransport({ baseUrl: running.url, token: FORWARDER.token }).push({
+        replicaId: B,
+        support,
+        ops: await makeOps(B, 1),
+      });
+      expect(seen).toEqual([undefined, { principal: 'forwarder', writableAs: '*' }]);
+    } finally {
+      await running.close();
+      await core.close();
+    }
+  });
+
   it('identities only (no shared secret): only mapped secrets are accepted', async () => {
     const { core } = await openRelay();
     const running = await listen(createRelayServer({ core, identities: [ALICE] }), 0);
