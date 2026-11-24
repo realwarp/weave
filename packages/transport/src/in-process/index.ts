@@ -33,5 +33,15 @@ export function inProcessTransport(endpoint: SyncEndpoint): SyncEndpoint {
     ack: async (request) => {
       await endpoint.ack(copy(request));
     },
+    // [ADV] Snapshots pass through when the endpoint offers them (R4.8).
+    ...(endpoint.snapshot === undefined
+      ? {}
+      : { snapshot: async () => copy(await endpoint.snapshot!()) }),
+    ...(endpoint.putSnapshot === undefined
+      ? {}
+      : {
+          putSnapshot: async (s: Parameters<NonNullable<SyncEndpoint['putSnapshot']>>[0]) =>
+            endpoint.putSnapshot!(copy(s)),
+        }),
   };
 }

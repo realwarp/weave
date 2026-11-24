@@ -17,6 +17,7 @@ export type {
   PushResponse,
   Rejection,
   RejectedOrigin,
+  Snapshot,
   Support,
   SyncCounts,
   SyncEndpoint,
@@ -65,3 +66,10 @@ export {
   type SelectInput,
   type SelectOutput,
 } from './sync/select.js';
+export {
+  SNAPSHOT_FORMAT,
+  coversCompacted,
+  hashSnapshot,
+  sealSnapshot,
+  verifySnapshotEnvelope,
+} from './sync/snapshot.js';

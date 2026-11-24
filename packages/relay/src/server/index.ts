@@ -3,6 +3,8 @@
  *
  *   POST /v1/pull  JSON -> NDJSON     POST /v1/push  NDJSON -> JSON
  *   POST /v1/ack   JSON -> 204        GET  /v1/health        -> JSON
+ *   [ADV] GET /v1/snapshot -> JSON    PUT  /v1/snapshot JSON -> 204
+ *   [ADV] POST /v1/admin/compact      POST /v1/admin/remove-peer
  *
  * An optional bearer token is compared in constant time and never logged.
  */
@@ -17,11 +19,13 @@ import {
   type AckRequest,
   type PullRequest,
   type Scheduler,
+  type Snapshot,
   type Support,
   type VersionVector,
 } from '@weave/core/protocol';
 import { decodePushRequest, encodePullResponse } from '@weave/transport/http';
 import type { RelayCore } from '../core/index.js';
+import { DEFAULT_MAX_SNAPSHOT_BYTES } from '../core/snapshot.js';
 
 export interface RelayServerOptions {
   readonly core: RelayCore;
@@ -29,6 +33,8 @@ export interface RelayServerOptions {
   readonly token?: string;
   /** Maximum request body size (default 4 MiB). */
   readonly maxBodyBytes?: number;
+  /** [ADV] Maximum snapshot upload size for `PUT /v1/snapshot` (default 64 MiB). */
+  readonly maxSnapshotBytes?: number;
   /** Receives one line per request without secrets. */
   readonly log?: (line: string) => void;
   /** Monotonic time source for request durations in the log (default: platform). */
@@ -146,6 +152,7 @@ function ackRequest(body: Record<string, unknown>): AckRequest {
 
 export function createRelayServer(options: RelayServerOptions): Server {
   const max = options.maxBodyBytes ?? 4 * 1024 * 1024;
+  const maxSnapshot = options.maxSnapshotBytes ?? DEFAULT_MAX_SNAPSHOT_BYTES;
   const log = options.log ?? (() => undefined);
   const scheduler = options.scheduler ?? systemScheduler;
   return createServer((req, res) => {
@@ -165,7 +172,19 @@ export function createRelayServer(options: RelayServerOptions): Server {
           status = 401;
           return send(res, 401, JSON.stringify({ message: 'A valid bearer token is required' }));
         }
-        const body = await readBody(req, max);
+        if (route === 'GET /v1/snapshot') {
+          const s = await options.core.snapshot();
+          status = 200;
+          return send(res, 200, JSON.stringify(s));
+        }
+        const isSnapshotUpload = route === 'PUT /v1/snapshot';
+        const body = await readBody(req, isSnapshotUpload ? maxSnapshot : max);
+        if (isSnapshotUpload) {
+          await options.core.putSnapshot(parseJson(body) as unknown as Snapshot);
+          status = 204;
+          res.writeHead(204);
+          return res.end();
+        }
         if (route === 'POST /v1/pull') {
           const r = await options.core.pull(pullRequest(parseJson(body)));
           status = 200;

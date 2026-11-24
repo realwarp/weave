@@ -9,6 +9,7 @@ import type {
   ApplyIncoming,
   CompactionInfo,
   PeerEntry,
+  Snapshot,
   Support,
   SyncEndpoint,
   SyncOptions,
@@ -141,6 +142,18 @@ export interface CompactionOptions {
   readonly members?: readonly ReplicaId[];
 }
 
+/** [ADV] Result of `replica.bootstrap()`. */
+export interface BootstrapReport {
+  /** The replica the snapshot came from. */
+  readonly source: ReplicaId;
+  /** Op lines imported. */
+  readonly ops: number;
+  /** Records derived from them. */
+  readonly records: number;
+  /** The vector this replica holds after the import. */
+  readonly vector: VersionVector;
+}
+
 /** [ADV] Result of `replica.compact()`. */
 export interface CompactionReport {
   /** The horizon that was used. */
@@ -205,6 +218,14 @@ export interface Replica {
    * ops (R3.10). With a relay, call `RelayCore.removePeer` instead; the relay's list syncs here.
    */
   removePeer(replicaId: ReplicaId): Promise<void>;
+  /** [ADV] A snapshot of this replica's op set and vectors for bootstrapping others (R4.8). */
+  exportSnapshot(): Promise<Snapshot>;
+  /**
+   * [ADV] Bootstraps an EMPTY replica from a snapshot, or from an endpoint that serves one, then
+   * normal sync continues (R4.8). A removed device rejoins only through a new, empty replica with
+   * a fresh replica ID. Throws `VALIDATION_FAILED` when this replica already holds data.
+   */
+  bootstrap(source: Snapshot | SyncEndpoint): Promise<BootstrapReport>;
   /** Close the replica and release resources. */
   close(): Promise<void>;
 }

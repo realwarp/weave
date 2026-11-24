@@ -1,5 +1,5 @@
 import type { ErrorCode, WeaveError } from './errors.js';
-import type { ReplicaId, VersionVector } from './json.js';
+import type { JsonValue, ReplicaId, VersionVector } from './json.js';
 
 /** Map of collection name to the highest schema version the sender supports (R4.10). */
 export type Support = Readonly<Record<string, number>>;
@@ -89,6 +89,33 @@ export interface CompactionInfo {
   readonly removed: Readonly<Record<ReplicaId, number>>;
 }
 
+/**
+ * [ADV] A snapshot for bootstrapping a new replica (R4.8). It holds the source's accepted op lines
+ * (tombstones included), the kept conflict history and the vectors, so a replica that imports it
+ * holds exactly the source's op set and can continue with normal sync. Integrity: `hash` is the
+ * SHA-256 of the canonical encoding of every other field, and every op line is verified on import.
+ */
+export interface Snapshot {
+  /** Always `weave-snapshot/1`. */
+  readonly format: 'weave-snapshot/1';
+  /** The replica the snapshot was taken from. */
+  readonly source: ReplicaId;
+  /** The source's accepted vector. */
+  readonly vector: VersionVector;
+  /** The source's highest accepted Lamport value. */
+  readonly maxLamport: number;
+  /** Per origin, the highest `seq` the source had discarded; older history exists only here. */
+  readonly compactedThrough: VersionVector;
+  /** Removed members known to the source, with the last `seq` still accepted from each. */
+  readonly removed: Readonly<Record<ReplicaId, number>>;
+  /** Every op line the source holds, in key order. */
+  readonly ops: readonly string[];
+  /** Conflict history kept after compaction, per record: `[collection, recordId, entries]`. */
+  readonly archives: ReadonlyArray<readonly [string, string, readonly JsonValue[]]>;
+  /** SHA-256 (hex) over the canonical encoding of all other fields. */
+  readonly hash: string;
+}
+
 /** Request to push ops to a remote peer. */
 export interface PushRequest {
   /** The requesting replica's ID. */
@@ -127,6 +154,10 @@ export interface SyncEndpoint {
   push(request: PushRequest): Promise<PushResponse>;
   /** Acknowledge the durable vector after a successful sync. */
   ack(request: AckRequest): Promise<void>;
+  /** [ADV] Fetches a snapshot to bootstrap from (R4.8). Optional; absent means not supported. */
+  snapshot?(): Promise<Snapshot>;
+  /** [ADV] Stores a snapshot at the endpoint, for example at a relay (R4.8). Optional. */
+  putSnapshot?(snapshot: Snapshot): Promise<void>;
 }
 
 /** Summary statistics from a sync operation. */

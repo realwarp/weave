@@ -37,6 +37,22 @@ doc comment. Rules:
 | T5.1 | `PullResponse.compaction?: CompactionInfo` (`horizon`, `compactedThrough`, `removed`), published by the relay. |
 | T5.1 | Storage keys `meta/compaction` (`MetaCompaction`) and `chist/<collection>/<recordId>` (conflict history kept after compaction). |
 | T5.1 | `CreateReplicaOptions.compaction?: CompactionOptions` (`enabled`, `members`), `Replica.compact(): Promise<CompactionReport>`, `Replica.removePeer(id)`, `ReplicaStatus.compaction?`, optional `SyncHost.noteCompaction?(info)`. |
+| T5.2 | `Snapshot` (format `weave-snapshot/1`: source, vectors, `compactedThrough`, removed list, every op line, kept conflict history, SHA-256 `hash`); optional `SyncEndpoint.snapshot?()` and `putSnapshot?(s)`; `Replica.exportSnapshot()` and `Replica.bootstrap(snapshotOrEndpoint): Promise<BootstrapReport>`. Relay: `RelayCore.snapshot()`, `RelayCore.putSnapshot()`, `GET` and `PUT /v1/snapshot`. |
+
+### Snapshot design (T5.2)
+
+- A snapshot holds **op lines, not derived state**: the importer verifies the hash and every op
+  line, checks that the lines are exactly what the vectors promise (every `seq` above
+  `compactedThrough` present, none above the vector), validates them against its own schema, and
+  re-derives every record. A tampered or inconsistent snapshot changes nothing.
+- Only an **empty** replica may bootstrap, and only with a replica ID the snapshot does not
+  contain. A removed device therefore rejoins with new storage and a fresh ID (R3.10).
+- After import the replica holds the source's op set (equal op-set hash), `compactedThrough` and
+  removed list, and continues with normal sync. Conflicts that happened before it joined are
+  marked as seen, so they are not announced as new.
+- The relay stores one snapshot uploaded by a member, opaquely: it checks the hash and the op lines
+  and requires the snapshot to cover everything the relay discarded. A smaller snapshot never
+  replaces a larger one.
 
 ## Consequences
 

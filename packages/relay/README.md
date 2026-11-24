@@ -67,3 +67,24 @@ Both admin routes need the bearer token when one is set.
 **Trust assumption.** The relay records what members claim to hold; it cannot verify it. Compaction
 is safe only if members follow the acknowledgement protocol (acknowledge after durable storage,
 never over-claim). It is not safe against a member that over-claims; see ADR-0006.
+
+## Snapshots ([ADV], 0.2.0)
+
+A device that needs history the relay discarded gets `NEEDS_SNAPSHOT`. It bootstraps from a
+snapshot and then syncs normally:
+
+```ts
+await replica.bootstrap(httpTransport({ baseUrl })); // only on an empty replica
+await replica.sync(httpTransport({ baseUrl }));
+```
+
+A member uploads the snapshot, typically right after compacting:
+
+```ts
+await httpTransport({ baseUrl, token }).putSnapshot!(await member.exportSnapshot());
+```
+
+`GET /v1/snapshot` serves it and `PUT /v1/snapshot` stores it (default limit 64 MiB, option
+`maxSnapshotBytes`; both need the bearer token when set). The relay checks the snapshot's hash and
+every op line, and refuses a snapshot that does not cover the history it discarded. It never reads
+field values; the importing replica re-derives all state itself.

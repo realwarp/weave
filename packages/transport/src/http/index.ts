@@ -18,6 +18,7 @@ import {
   type PullResponse,
   type PushRequest,
   type PushResponse,
+  type Snapshot,
   type SyncEndpoint,
 } from '@weave/core/protocol';
 import { decodePullResponse, encodePushRequest } from './ndjson.js';
@@ -95,7 +96,12 @@ export function httpTransport(options: HttpTransportOptions): SyncEndpoint {
   const doFetch = options.fetch ?? globalThis.fetch.bind(globalThis);
   const timeoutMs = options.timeoutMs ?? 30_000;
 
-  async function call(route: string, body: string, contentType: string): Promise<Response> {
+  async function call(
+    route: string,
+    body: string | undefined,
+    contentType: string,
+    method: 'POST' | 'GET' | 'PUT' = 'POST',
+  ): Promise<Response> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     const headers: Record<string, string> = { 'content-type': contentType };
@@ -103,9 +109,9 @@ export function httpTransport(options: HttpTransportOptions): SyncEndpoint {
     let response: Response;
     try {
       response = await doFetch(`${base}${route}`, {
-        method: 'POST',
+        method,
         headers,
-        body,
+        ...(body === undefined ? {} : { body }),
         signal: controller.signal,
       });
     } catch (e) {
@@ -162,6 +168,26 @@ export function httpTransport(options: HttpTransportOptions): SyncEndpoint {
     async ack(request: AckRequest): Promise<void> {
       const response = await call('/v1/ack', JSON.stringify(request), 'application/json');
       await readText(response, '/v1/ack');
+    },
+    /** [ADV] Fetches the relay's snapshot (`GET /v1/snapshot`); the importer verifies it. */
+    async snapshot(): Promise<Snapshot> {
+      const response = await call('/v1/snapshot', undefined, 'application/json', 'GET');
+      const text = await readText(response, '/v1/snapshot');
+      try {
+        return JSON.parse(text) as Snapshot;
+      } catch (e) {
+        throw transportError('The snapshot is not JSON', true, {}, e);
+      }
+    },
+    /** [ADV] Uploads a snapshot to the relay (`PUT /v1/snapshot`). */
+    async putSnapshot(snapshot: Snapshot): Promise<void> {
+      const response = await call(
+        '/v1/snapshot',
+        JSON.stringify(snapshot),
+        'application/json',
+        'PUT',
+      );
+      await readText(response, '/v1/snapshot');
     },
   };
 }

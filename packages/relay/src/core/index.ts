@@ -26,12 +26,14 @@ import {
   type PushResponse,
   type Random,
   type ReplicaId,
+  type Snapshot,
   type StorageAdapter,
   type StorageTx,
   type SyncEndpoint,
   type VersionVector,
 } from '@weave/core/protocol';
 import { computeHorizon } from './compaction.js';
+import { SNAPSHOT_KEY, checkUpload, readSnapshot, supersedes } from './snapshot.js';
 
 export interface RelayLimits {
   /** Maximum ops in one push (default 500). */
@@ -466,6 +468,36 @@ export class RelayCore implements SyncEndpoint {
         keys.peer(request.replicaId),
         JSON.stringify({ ackVector: mergeVectors(member.ackVector, request.durable) }),
       );
+    });
+  }
+
+  /** [ADV] The stored snapshot for bootstrapping (R4.8); `NOT_SUPPORTED` when none is stored. */
+  async snapshot(): Promise<Snapshot> {
+    const stored = await this.storage.transaction('ro', (tx) => readSnapshot(tx));
+    if (stored === undefined)
+      throw new WeaveError(
+        'NOT_SUPPORTED',
+        'This relay holds no snapshot; ask a member to upload one',
+      );
+    return stored;
+  }
+
+  /**
+   * [ADV] Stores a snapshot uploaded by a member. It must be intact and cover the relay's
+   * discarded history; it replaces the stored one only if it holds at least as much.
+   */
+  putSnapshot(snapshot: Snapshot): Promise<void> {
+    return this.queue.run(async () => {
+      const compaction = await this.storage.transaction('ro', (tx) => readCompaction(tx));
+      const checked = await checkUpload(
+        snapshot,
+        compaction.compactedThrough,
+        this.limits.maxOpBytes,
+      );
+      await this.storage.transaction('rw', async (tx) => {
+        if (supersedes(checked, await readSnapshot(tx)))
+          tx.put(SNAPSHOT_KEY, JSON.stringify(checked));
+      });
     });
   }
 

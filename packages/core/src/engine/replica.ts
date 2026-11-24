@@ -17,6 +17,7 @@ import type { Logger, WeaveEvent } from '../contracts/events.js';
 import type { JsonValue, ReplicaId, VersionVector } from '../contracts/json.js';
 import type { Op, OpHistoryEntry } from '../contracts/op.js';
 import type {
+  BootstrapReport,
   ChangeEvent,
   Collection,
   CompactionOptions,
@@ -47,6 +48,7 @@ import type {
   CompactionInfo,
   PeerEntry,
   Rejection,
+  Snapshot,
   Support,
   SyncEndpoint,
   SyncOptions,
@@ -65,6 +67,7 @@ import {
 } from '../schema/index.js';
 import { buildOpHistory, conflictHistory, deriveRecord } from '../state/index.js';
 import { selectReadablePrefix, isSupported } from '../sync/select.js';
+import { SNAPSHOT_FORMAT, sealSnapshot, verifySnapshotEnvelope } from '../sync/snapshot.js';
 import {
   EMPTY_COMPACTION,
   advanceCompactedThrough,
@@ -899,6 +902,8 @@ class Engine implements Replica, SyncHost {
         this.alive();
         await this.mergePeerAck(request.replicaId, request.durable);
       },
+      // [ADV] A replica serves its own snapshot for direct bootstrapping (R4.8).
+      snapshot: () => this.exportSnapshot(),
     };
   }
 
@@ -974,6 +979,136 @@ class Engine implements Replica, SyncHost {
     await this.mutex.run(async () => {
       const groups = await this.storage.transaction('ro', (tx) => listRecords(tx));
       await rewriteRecords(this.storage, [...this.definitions.values()], groups, undefined);
+    });
+  }
+
+  // ---------------------------------------------------------------- [ADV] snapshots (R4.8)
+
+  async exportSnapshot(): Promise<Snapshot> {
+    this.alive();
+    return this.mutex.run(async () => {
+      const data = await this.storage.transaction('ro', async (tx) => ({
+        state: await readMetaState(tx),
+        compaction: (await readCompaction(tx)) ?? EMPTY_COMPACTION,
+        ops: await tx.scan('op/'),
+        archives: await tx.scan('chist/'),
+      }));
+      return sealSnapshot({
+        format: SNAPSHOT_FORMAT,
+        source: this.replicaId,
+        vector: data.state.vector,
+        maxLamport: data.state.maxLamport,
+        compactedThrough: data.compaction.compactedThrough,
+        removed: data.compaction.removed,
+        ops: data.ops.map(([, line]) => line),
+        archives: data.archives.map(([key, text]) => {
+          const [, collection, recordId] = key.split('/') as [string, string, string];
+          return [collection, recordId, JSON.parse(text) as JsonValue[]] as const;
+        }),
+      });
+    });
+  }
+
+  async bootstrap(source: Snapshot | SyncEndpoint): Promise<BootstrapReport> {
+    this.alive();
+    let raw: unknown;
+    if ('format' in source) raw = source;
+    else if (source.snapshot !== undefined) raw = await source.snapshot();
+    else throw new WeaveError('NOT_SUPPORTED', 'The endpoint does not serve snapshots');
+    const { snapshot, ops } = await verifySnapshotEnvelope(raw);
+    if ((snapshot.vector[this.replicaId] ?? 0) > 0)
+      throw new WeaveError(
+        'VALIDATION_FAILED',
+        'The snapshot already holds ops of this replica ID; rejoin with a new, empty replica',
+      );
+    // Application schema: every readable op must validate, and none may need a newer schema.
+    for (const op of ops) {
+      const definition = this.definitions.get(op.collection);
+      if (definition === undefined) continue;
+      if (op.schemaVersion > definition.version)
+        throw new WeaveError('SCHEMA_TOO_NEW', 'The snapshot needs a newer schema; upgrade first', {
+          details: { collection: op.collection, requiredVersion: op.schemaVersion },
+        });
+      if (op.kind !== 'delete')
+        migrateAndCheck(definition, {
+          fields: op.fields,
+          recordId: op.recordId,
+          fromVersion: op.schemaVersion,
+        });
+    }
+    return this.mutex.run(async () => {
+      const empty = await this.storage.transaction('ro', async (tx) => {
+        const state = await readMetaState(tx);
+        return (
+          Object.keys(state.vector).length === 0 &&
+          (await tx.scan('op/', { limit: 1 })).length === 0 &&
+          (await tx.scan(keys.pendPrefix(), { limit: 1 })).length === 0 &&
+          (await tx.scan(keys.recPrefix(), { limit: 1 })).length === 0
+        );
+      });
+      if (!empty)
+        throw new WeaveError(
+          'VALIDATION_FAILED',
+          'Only an empty replica can bootstrap from a snapshot',
+        );
+
+      const archives = new Map<string, ConflictRecord[]>();
+      for (const [collection, recordId, entries] of snapshot.archives)
+        archives.set(`${collection}/${recordId}`, entries as unknown as ConflictRecord[]);
+      const groups = new Map<string, { collection: string; recordId: string; ops: Op[] }>();
+      for (const op of ops) {
+        const k = `${op.collection}/${op.recordId}`;
+        const g = groups.get(k) ?? { collection: op.collection, recordId: op.recordId, ops: [] };
+        g.ops.push(op);
+        groups.set(k, g);
+      }
+      const records: Array<{ key: string; record: DerivedRecord }> = [];
+      for (const [k, g] of groups) {
+        const definition = this.definitions.get(g.collection);
+        if (definition === undefined) continue;
+        const record = withArchive(
+          await deriveRecord(g.ops, definition, g.collection, g.recordId),
+          archives.get(k) ?? [],
+        );
+        records.push({ key: keys.rec(g.collection, g.recordId), record });
+      }
+      const lineOf = new Map(snapshot.ops.map((l, i) => [i, l]));
+      await this.storage.transaction('rw', async (tx) => {
+        const current = await readMetaState(tx);
+        ops.forEach((op, i) => {
+          tx.put(keys.op(op.replicaId, op.seq), lineOf.get(i)!);
+          tx.put(keys.rop(op.collection, op.recordId, op.replicaId, op.seq), '');
+        });
+        for (const [k, entries] of archives) {
+          const [collection, recordId] = k.split('/') as [string, string];
+          tx.put(keys.chist(collection, recordId), JSON.stringify(entries));
+        }
+        for (const { key, record } of records) {
+          tx.put(key, JSON.stringify(record));
+          // Conflicts that happened before this device joined are history, not news.
+          for (const id of record.conflictHistoryIds) tx.put(keys.notified(id), '');
+        }
+        const compaction: MetaCompaction = {
+          horizon: {},
+          compactedThrough: snapshot.compactedThrough,
+          removed: snapshot.removed,
+        };
+        tx.put(keys.metaCompaction, JSON.stringify(compaction));
+        tx.put(
+          keys.metaState,
+          JSON.stringify({
+            vector: snapshot.vector,
+            maxLamport: snapshot.maxLamport,
+            commit: current.commit + 1,
+          } satisfies MetaState),
+        );
+      });
+      return {
+        source: snapshot.source,
+        ops: ops.length,
+        records: records.length,
+        vector: snapshot.vector,
+      };
     });
   }
 
