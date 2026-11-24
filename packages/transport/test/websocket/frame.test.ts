@@ -66,6 +66,21 @@ describe('frames (RFC 6455 section 5)', () => {
     );
   });
 
+  it('a large frame dripped one byte at a time costs linear, not quadratic, work (review T5.8)', () => {
+    // 256 KiB in 1-byte chunks. A parser that re-joins its whole buffer per chunk copies about
+    // 34 GB here; a linear one copies each byte a few times.
+    const payload = bytes(256 * 1024);
+    const wire = encodeFrame(OPCODE.text, payload, { mask: MASK });
+    const p = server();
+    const started = performance.now();
+    const frames = [];
+    for (let i = 0; i < wire.length; i++) frames.push(...p.push(wire.subarray(i, i + 1)));
+    const ms = performance.now() - started;
+    expect(frames).toHaveLength(1);
+    expect(frames[0]!.payload).toEqual(payload);
+    expect(ms).toBeLessThan(3_000);
+  });
+
   it('several frames in one chunk are all returned in order', () => {
     const a = encodeFrame(OPCODE.text, bytes(5), { mask: MASK });
     const b = encodeFrame(OPCODE.ping, bytes(2), { mask: MASK });

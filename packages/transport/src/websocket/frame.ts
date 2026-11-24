@@ -103,26 +103,55 @@ export interface ParserOptions {
  * Throws `FrameError` on a protocol violation; the caller then closes the connection.
  */
 export class FrameParser {
-  private buffer: Uint8Array = new Uint8Array(0);
+  /**
+   * Received bytes not yet parsed, as chunks. They are joined only once at least `need` bytes
+   * are present, so each byte is copied a few times per frame: linear work even when a client
+   * drips a large frame one byte at a time (no quadratic CPU cost, review T5.8).
+   */
+  private parts: Uint8Array[] = [];
+  private size = 0;
+  /** Bytes needed before parsing can make progress (2 for a frame header). */
+  private need = 2;
 
   constructor(private readonly options: ParserOptions) {}
 
   push(chunk: Uint8Array): Frame[] {
-    const joined = new Uint8Array(this.buffer.length + chunk.length);
-    joined.set(this.buffer);
-    joined.set(chunk, this.buffer.length);
-    this.buffer = joined;
-    const frames: Frame[] = [];
-    for (;;) {
-      const frame = this.next();
-      if (frame === undefined) return frames;
-      frames.push(frame);
+    if (chunk.length > 0) {
+      this.parts.push(chunk);
+      this.size += chunk.length;
     }
+    const frames: Frame[] = [];
+    while (this.size >= this.need) {
+      const b = this.joined();
+      const result = this.next(b);
+      if (typeof result === 'number') {
+        this.need = result;
+        break;
+      }
+      frames.push(result.frame);
+      const rest = b.subarray(result.used);
+      this.parts = rest.length === 0 ? [] : [rest];
+      this.size = rest.length;
+      this.need = 2;
+    }
+    return frames;
   }
 
-  private next(): Frame | undefined {
-    const b = this.buffer;
-    if (b.length < 2) return undefined;
+  private joined(): Uint8Array {
+    if (this.parts.length === 1) return this.parts[0]!;
+    const all = new Uint8Array(this.size);
+    let at = 0;
+    for (const p of this.parts) {
+      all.set(p, at);
+      at += p.length;
+    }
+    this.parts = [all];
+    return all;
+  }
+
+  /** The next frame and the bytes it used, or the total byte count needed to go on. */
+  private next(b: Uint8Array): { frame: Frame; used: number } | number {
+    if (b.length < 2) return 2;
     const first = b[0]!;
     const second = b[1]!;
     if ((first & 0x70) !== 0)
@@ -137,11 +166,11 @@ export class FrameParser {
     let len = second & 0x7f;
     let at = 2;
     if (len === 126) {
-      if (b.length < 4) return undefined;
+      if (b.length < 4) return 4;
       len = (b[2]! << 8) | b[3]!;
       at = 4;
     } else if (len === 127) {
-      if (b.length < 10) return undefined;
+      if (b.length < 10) return 10;
       const view = new DataView(b.buffer, b.byteOffset, b.byteLength);
       const high = view.getUint32(2);
       const low = view.getUint32(6);
@@ -155,11 +184,11 @@ export class FrameParser {
     if (len > this.options.maxPayload) throw new FrameError('Frame too large', CLOSE.tooBig);
     const maskAt = at;
     if (masked) at += 4;
-    if (b.length < at + len) return undefined;
+    // The size checks above ran first, so at most one allowed frame is ever buffered.
+    if (b.length < at + len) return at + len;
     const payload = b.slice(at, at + len);
     if (masked) for (let i = 0; i < len; i++) payload[i] = payload[i]! ^ b[maskAt + (i & 3)]!;
-    this.buffer = b.slice(at + len);
-    return { fin, opcode, payload, masked };
+    return { frame: { fin, opcode, payload, masked }, used: at + len };
   }
 }
 

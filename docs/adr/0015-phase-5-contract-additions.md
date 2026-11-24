@@ -70,8 +70,13 @@ doc comment. Rules:
   relay. `authenticate(secret)` maps a secret to an `AuthContext`, and `endpoint(auth)` binds it,
   for example `(auth) => replica.endpoint({ auth })`; `authenticate` with a plain endpoint is
   refused at startup so an identity can never be dropped silently.
-- **Limits.** No TLS: put `wss://` termination in front across networks. The relay keeps its
-  HTTP API; it has no WebSocket route in 0.2.0.
+- **Resource bounds.** A frame larger than `maxMessageBytes` is refused from its header, before
+  its payload is buffered; a message is bounded the same way; at most 64 requests are in flight
+  per connection. The frame parser joins received bytes only when enough have arrived, so its
+  work is linear even when a client sends one byte at a time (found in review, tested).
+- **Limits.** No TLS: put `wss://` termination in front across networks. There is no cap on the
+  number of connections and no idle timeout: across networks, run it behind a proxy that limits
+  both. The relay keeps its HTTP API; it has no WebSocket route in 0.2.0.
 
 ### Peer ban (T5.7)
 
