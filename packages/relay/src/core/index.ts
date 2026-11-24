@@ -292,7 +292,8 @@ export class RelayCore implements SyncEndpoint {
     const selected = await selectReadablePrefix({
       senderVector: vector,
       peerVector: request.vector,
-      support: request.support,
+      // [ADV] A holding puller (R8.7) takes every op; the relay still reads only envelopes.
+      support: request.hold === true ? '*' : request.support,
       limit: Math.min(Math.max(0, request.limit), this.limits.maxOpsPerPull),
       direction: 'pull',
       ...(request.origins === undefined ? {} : { origins: request.origins }),

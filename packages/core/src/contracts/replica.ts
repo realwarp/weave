@@ -129,6 +129,19 @@ export interface ReplicaStatus {
   >;
   /** [ADV] Present once this replica has learned a horizon or compacted (R3.6 to R3.10). */
   readonly compaction?: MetaCompaction;
+  /**
+   * [ADV] Present while this replica holds ops it cannot read yet (R8.7, `holdNewerSchema`):
+   * an app update is needed to apply them.
+   */
+  readonly held?: HeldStatus;
+}
+
+/** [ADV] Held newer-schema ops waiting for an app update (R8.7). */
+export interface HeldStatus {
+  /** Number of held ops this code cannot read. */
+  readonly ops: number;
+  /** Per collection, the highest schema version a held op needs. */
+  readonly needs: Readonly<Record<string, number>>;
 }
 
 /**
@@ -187,6 +200,13 @@ export interface CreateReplicaOptions {
   readonly scheduler?: Scheduler;
   /** [ADV] Compaction settings; compaction is off by default (R3.12). */
   readonly compaction?: CompactionOptions;
+  /**
+   * [ADV] Hold ops this replica cannot read yet (an unknown collection or a newer schema
+   * version) instead of blocking their origin (R8.7). Held ops are stored and counted, excluded
+   * from visible state, reported in `status().held`, and applied after an upgrade. Default false:
+   * the prefix rule of R4.10 applies.
+   */
+  readonly holdNewerSchema?: boolean;
 }
 
 /** The main interface for interacting with a WEAVE replica. */
@@ -288,6 +308,8 @@ export interface SyncHost {
   setState(state: ReplicaStatus['state']): void;
   /** [ADV] Records compaction state an endpoint published (horizon, removed list). Optional. */
   noteCompaction?(info: CompactionInfo): Promise<void>;
+  /** [ADV] True when this replica holds unreadable ops (R8.7), so peers send it every op. */
+  holdsNewer?(): boolean;
 }
 
 /** Re-exported for convenience in adapter and app code. */

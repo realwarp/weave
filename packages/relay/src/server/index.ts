@@ -132,6 +132,9 @@ function pullRequest(body: Record<string, unknown>): PullRequest {
   ) {
     throw invalid('origins must be an array of replica IDs');
   }
+  // [ADV] R8.7: a puller that holds unreadable ops asks for every op.
+  const hold = body['hold'];
+  if (hold !== undefined && typeof hold !== 'boolean') throw invalid('hold must be a boolean');
   return {
     replicaId: replicaId(body['replicaId'], 'replicaId'),
     vector: vector(body['vector'], 'vector'),
@@ -140,6 +143,7 @@ function pullRequest(body: Record<string, unknown>): PullRequest {
     ...(origins === undefined
       ? {}
       : { origins: (origins as unknown[]).map((o) => replicaId(o, 'origins entry')) }),
+    ...(hold === true ? { hold: true } : {}),
   };
 }
 

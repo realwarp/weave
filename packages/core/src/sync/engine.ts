@@ -86,6 +86,7 @@ export async function runSync(
         support,
         limit,
         ...(origins === undefined ? {} : { origins }),
+        ...(host.holdsNewer?.() === true ? { hold: true } : {}),
       }),
     ).then(async (res) => {
       // [ADV] Learn the relay's horizon and removed list (R3.6, R3.10).

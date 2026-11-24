@@ -50,6 +50,11 @@ export interface PullRequest {
   readonly limit: number;
   /** If specified, only sync these origins. */
   readonly origins?: readonly ReplicaId[];
+  /**
+   * [ADV] The puller holds ops it cannot read (R8.7): the sender delivers every op, ignoring
+   * `support`. Old endpoints ignore it and apply the prefix rule.
+   */
+  readonly hold?: boolean;
 }
 
 /** Response to a pull request. */

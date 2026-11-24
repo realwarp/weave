@@ -43,6 +43,31 @@ doc comment. Rules:
 
 | T5.4 | `ResolverName` gains `'counter'` and `'custom'`; `FieldKind` gains `'counter'`; `FieldSpec.custom?: CustomResolver`; `CustomResolver` type; `f.counter()`, `f.custom(base, resolver)`; exported `defineResolver(name, fn)` and `assertResolverDeterministic(resolver, samples, options?)` with `AssertResolverOptions`. |
 
+| T5.5 | `CreateReplicaOptions.holdNewerSchema?: boolean`; `ReplicaStatus.held?: HeldStatus` (`ops`, `needs`); `PullRequest.hold?: boolean`; optional `SyncHost.holdsNewer?()`; storage keys `held/<origin>/<seq>`. Relay: `hold` accepted on `/v1/pull`. |
+
+### Held newer-schema ops (T5.5)
+
+- **Off by default.** Without `holdNewerSchema` the prefix rule of R4.10 is unchanged.
+- **What is held.** An op whose collection this code does not define, or whose `schemaVersion` is
+  newer. With the option, such ops are **accepted**: stored in `op/` and `rop/`, counted in the
+  vector, the op-set hash and acknowledgements, buffered and promoted like any op, and served to
+  peers (store and forward). This keeps D1 contiguity (R8.7). A `held/<origin>/<seq>` marker
+  records each one for `status()`.
+- **Excluded from state.** Records are derived from readable ops only; a record with no readable
+  op has no derived record. Held ops emit no change events. `status().held` reports the held op
+  count and, per collection, the schema version needed.
+- **Peers send everything.** A holding replica's endpoint reports `support: '*'`, and its pulls
+  carry `hold: true`, which the relay and replica endpoints honour. Old endpoints ignore the flag
+  and apply the prefix rule (the sync is then `partial`, as in 0.1.0).
+- **Upgrade.** On open, records of upgraded collections and of newly defined collections are
+  re-derived from all their ops, and markers of now-readable ops are removed. The upgraded
+  replica then has the same state and op-set hashes as a replica that never held anything.
+- **Local writes.** A write to a record that has held ops fails with `SCHEMA_TOO_NEW`: it would
+  causally follow changes this code cannot see and could supersede them unseen (for example lose
+  a counter's held deltas). Mixed-version writing stays out of scope (R8.7).
+- **Compaction and snapshots.** Records with held ops keep every op. Snapshot bootstrap with the
+  option holds newer ops instead of failing with `SCHEMA_TOO_NEW`.
+
 ### Counter and custom resolvers (T5.4)
 
 - **Counter.** A counter field's op value is a counter state `{ [replicaId]: [p, n] }`: the totals

@@ -67,6 +67,14 @@ import {
 } from '../schema/index.js';
 import { buildOpHistory, conflictHistory, deriveRecord } from '../state/index.js';
 import { isDeleted, restoreEnabled } from '../state/restore.js';
+import {
+  type HeldEntry,
+  heldKey,
+  isReadable,
+  readHeld,
+  readableOps,
+  summarizeHeld,
+} from './held.js';
 import { migratedSetOps } from '../state/derive.js';
 import { applyCounterDelta, mergeCounterStates } from '../resolvers/counter.js';
 import { selectReadablePrefix, isSupported } from '../sync/select.js';
@@ -96,6 +104,22 @@ import {
   valuesOf,
   writePeer,
 } from './store.js';
+
+/**
+ * Derives a record from the ops this code can read (R8.7: held newer-schema ops are excluded).
+ * `undefined` when none is readable: the record does not exist for this code yet. Without held
+ * ops this is exactly `deriveRecord`.
+ */
+async function deriveReadable(
+  ops: readonly Op[],
+  definition: AnyDefinition,
+  collection: string,
+  recordId: string,
+): Promise<DerivedRecord | undefined> {
+  const readable = readableOps(ops, definition);
+  if (readable.length === 0) return undefined;
+  return deriveRecord(readable, definition, collection, recordId);
+}
 
 /** [ADV] A `restore` op is accepted only by a collection that enables it (R6.9, A1/A2). */
 function assertRestoreAccepted(definition: AnyDefinition): void {
@@ -183,6 +207,7 @@ class Engine implements Replica, SyncHost {
     random: Random,
     scheduler: Scheduler,
     private readonly compactionOptions: CompactionOptions | undefined = undefined,
+    private readonly hold: boolean = false,
   ) {
     this.id = replicaId;
     this.replicaId = replicaId;
@@ -231,6 +256,11 @@ class Engine implements Replica, SyncHost {
 
   support(): Support {
     return supportOf([...this.definitions.values()]);
+  }
+
+  /** [ADV] R8.7: whether this replica holds ops it cannot read instead of blocking them. */
+  holdsNewer(): boolean {
+    return this.hold;
   }
 
   private definition(name: string): AnyDefinition {
@@ -353,15 +383,27 @@ class Engine implements Replica, SyncHost {
           }
           return { recordId: pre.mutation.recordId, opId: pre.mutation.opId, replayed: true };
         }
+        // [ADV] Held newer-schema ops do not count for this code (R8.7); without them, all ops.
+        const readable = readableOps(pre.ops, definition);
+        if (readable.length < pre.ops.length) {
+          // A write here would causally follow changes this code cannot see and could silently
+          // supersede them (mixed-version writing is out of scope, R8.7): update the app first.
+          const needed = Math.max(...pre.ops.map((o) => o.schemaVersion));
+          throw new WeaveError(
+            'SCHEMA_TOO_NEW',
+            `Record "${recordId}" has changes from schema version ${needed}; update the app first`,
+            { details: { collection, recordId, requiredVersion: needed } },
+          );
+        }
         if (recordId !== null) {
-          if (pre.ops.length === 0) {
+          if (readable.length === 0) {
             throw new WeaveError(
               'VALIDATION_FAILED',
               `Record "${recordId}" does not exist in "${collection}"`,
             );
           }
           // D6: without `deletes` options this is "any delete op held" (0.1.0).
-          const deleted = isDeleted(pre.ops, definition);
+          const deleted = isDeleted(readable, definition);
           if (action === 'restore' && !deleted) {
             throw new WeaveError(
               'VALIDATION_FAILED',
@@ -385,11 +427,11 @@ class Engine implements Replica, SyncHost {
           kind,
           schemaVersion: definition.version,
           // [ADV] Counter deltas become counter states, read in this same attempt (R6.10).
-          fields: withCounterStates(definition, pre.ops, this.replicaId, fields),
+          fields: withCounterStates(definition, readable, this.replicaId, fields),
           wallTime: this.clock.nowMs(),
         });
         const record = withArchive(
-          await deriveRecord([...pre.ops, op], definition, collection, id),
+          await deriveRecord([...readable, op], definition, collection, id),
           pre.archive,
         );
         const nextState: MetaState = {
@@ -680,8 +722,9 @@ class Engine implements Replica, SyncHost {
       fresh.push(v);
     }
 
-    // Phase B: prefix, gap and promotion logic per origin.
-    const support = this.support();
+    // Phase B: prefix, gap and promotion logic per origin. [ADV] A holding replica (R8.7)
+    // accepts unreadable ops instead of rejecting them, which keeps D1 contiguity.
+    const support: Support | '*' = this.hold ? '*' : this.support();
     const vector: Record<string, number> = { ...snapshot.state.vector };
     const accepted: Array<{ op: Op; line: string; promoted: boolean }> = [];
     const toBuffer: Array<{ op: Op; line: string }> = [];
@@ -809,18 +852,16 @@ class Engine implements Replica, SyncHost {
         return m;
       });
       for (const [k, t] of touched) {
-        const definition = this.definition(t.collection);
+        // [ADV] A held op of an unknown collection has no derived record yet (R8.7).
+        const definition = this.definitions.get(t.collection);
+        if (definition === undefined) continue;
         const ops = [
           ...(existing.get(k)?.ops ?? []),
           ...accepted.filter((a) => `${a.op.collection}/${a.op.recordId}` === k).map((a) => a.op),
         ];
-        records.set(
-          k,
-          withArchive(
-            await deriveRecord(ops, definition, t.collection, t.recordId),
-            existing.get(k)?.archive ?? [],
-          ),
-        );
+        const record = await deriveReadable(ops, definition, t.collection, t.recordId);
+        if (record !== undefined)
+          records.set(k, withArchive(record, existing.get(k)?.archive ?? []));
       }
     }
     const maxLamport = Math.max(snapshot.state.maxLamport, ...accepted.map((a) => a.op.lamport));
@@ -846,6 +887,13 @@ class Engine implements Replica, SyncHost {
           }
           tx.put(keys.op(a.op.replicaId, a.op.seq), a.line);
           tx.put(keys.rop(a.op.collection, a.op.recordId, a.op.replicaId, a.op.seq), '');
+          if (!isReadable(a.op, this.definitions)) {
+            const entry: HeldEntry = {
+              collection: a.op.collection,
+              schemaVersion: a.op.schemaVersion,
+            };
+            tx.put(heldKey(a.op.replicaId, a.op.seq), JSON.stringify(entry));
+          }
         }
         for (const b of toBuffer) {
           const key = keys.pend(b.op.replicaId, b.op.seq);
@@ -873,6 +921,7 @@ class Engine implements Replica, SyncHost {
     }
     if (touched.size > 0) await this.markAndNotify([...touched.values()]);
     for (const a of [...accepted].sort((x, y) => compareD4(x.op, y.op))) {
+      if (!isReadable(a.op, this.definitions)) continue; // held: no visible change (R8.7)
       this.notifyChange({
         source: 'sync',
         collection: a.op.collection,
@@ -924,7 +973,8 @@ class Engine implements Replica, SyncHost {
         const selected = await selectReadablePrefix({
           senderVector: vector,
           peerVector: request.vector,
-          support: request.support,
+          // [ADV] A holding puller (R8.7) takes every op.
+          support: request.hold === true ? '*' : request.support,
           limit: request.limit,
           direction: 'pull',
           ...(request.origins === undefined ? {} : { origins: request.origins }),
@@ -933,7 +983,8 @@ class Engine implements Replica, SyncHost {
         return {
           endpointId: this.replicaId,
           durable: vector,
-          support: this.support(),
+          // [ADV] A holding replica accepts every op, so pushers send it everything (R8.7).
+          support: this.hold ? '*' : this.support(),
           ops: selected.lines,
           blocked: selected.blocked,
           more: selected.more,
@@ -1001,12 +1052,14 @@ class Engine implements Replica, SyncHost {
         };
       }
       const compaction = await readCompaction(tx);
+      const held = summarizeHeld(await readHeld(tx), this.definitions);
       return {
         state: this.syncState,
         vector: state.vector,
         pendingBuffer,
         peers,
         ...(compaction === undefined ? {} : { compaction }),
+        ...(held === undefined ? {} : { held }),
       };
     });
   }
@@ -1083,6 +1136,7 @@ class Engine implements Replica, SyncHost {
     for (const op of ops) {
       const definition = this.definitions.get(op.collection);
       if (definition === undefined) continue;
+      if (op.schemaVersion > definition.version && this.hold) continue; // held (R8.7)
       if (op.schemaVersion > definition.version)
         throw new WeaveError('SCHEMA_TOO_NEW', 'The snapshot needs a newer schema; upgrade first', {
           details: { collection: op.collection, requiredVersion: op.schemaVersion },
@@ -1125,10 +1179,9 @@ class Engine implements Replica, SyncHost {
       for (const [k, g] of groups) {
         const definition = this.definitions.get(g.collection);
         if (definition === undefined) continue;
-        const record = withArchive(
-          await deriveRecord(g.ops, definition, g.collection, g.recordId),
-          archives.get(k) ?? [],
-        );
+        const derived = await deriveReadable(g.ops, definition, g.collection, g.recordId);
+        if (derived === undefined) continue;
+        const record = withArchive(derived, archives.get(k) ?? []);
         records.push({ key: keys.rec(g.collection, g.recordId), record });
       }
       const lineOf = new Map(snapshot.ops.map((l, i) => [i, l]));
@@ -1137,6 +1190,11 @@ class Engine implements Replica, SyncHost {
         ops.forEach((op, i) => {
           tx.put(keys.op(op.replicaId, op.seq), lineOf.get(i)!);
           tx.put(keys.rop(op.collection, op.recordId, op.replicaId, op.seq), '');
+          // [ADV] Ops this code cannot read are held until an upgrade (R8.7).
+          if (!isReadable(op, this.definitions)) {
+            const entry: HeldEntry = { collection: op.collection, schemaVersion: op.schemaVersion };
+            tx.put(heldKey(op.replicaId, op.seq), JSON.stringify(entry));
+          }
         });
         for (const [k, entries] of archives) {
           const [collection, recordId] = k.split('/') as [string, string];
@@ -1273,6 +1331,9 @@ class Engine implements Replica, SyncHost {
       const writes: Array<{ collection: string; recordId: string; archive: ConflictRecord[] }> = [];
       for (const r of loaded.list) {
         const definition = this.definition(r.collection);
+        // [ADV] A record with held newer-schema ops keeps every op: this code cannot tell
+        // which of them will matter after the upgrade (R8.7).
+        if (readableOps(r.ops, definition).length < r.ops.length) continue;
         // [ADV] With restore or update-wins a deleted record can become live again, and which
         // deletes count depends on concurrent sets, so its ops all stay (ADR-0015, T5.3).
         const keepTombstones =
@@ -1391,11 +1452,12 @@ async function rewriteRecords(
   });
   const derived: Array<{ key: string; value: string }> = [];
   for (const { collection, recordId, ops, archive } of loaded) {
-    const record = withArchive(
-      await deriveRecord(ops, byName.get(collection)!, collection, recordId),
-      archive,
-    );
-    derived.push({ key: keys.rec(collection, recordId), value: JSON.stringify(record) });
+    const record = await deriveReadable(ops, byName.get(collection)!, collection, recordId);
+    if (record === undefined) continue; // only held ops (R8.7): no record yet
+    derived.push({
+      key: keys.rec(collection, recordId),
+      value: JSON.stringify(withArchive(record, archive)),
+    });
   }
   await storage.transaction('rw', async (tx) => {
     for (const d of derived) tx.put(d.key, d.value);
@@ -1440,6 +1502,9 @@ export async function createReplica(options: CreateReplicaOptions): Promise<Repl
         );
       }
       if (stored !== undefined && stored < d.version) upgrades.push(d.name);
+      // [ADV] A newly defined collection may already hold ops (R8.7 held ops, or a snapshot):
+      // derive them now. Without such ops `listRecords` finds nothing and nothing changes.
+      if (stored === undefined && meta.state !== undefined) upgrades.push(d.name);
       nextSchema[d.name] = d.version;
     }
     const schemaChanged = JSON.stringify(nextSchema) !== JSON.stringify(meta.schema);
@@ -1473,6 +1538,17 @@ export async function createReplica(options: CreateReplicaOptions): Promise<Repl
       });
     }
 
+    // [ADV] Held markers of ops this code can now read are dropped (R8.7). The records were
+    // re-derived above; a marker left by a crash here is ignored by status() and retried.
+    const byName = new Map(definitions.map((d) => [d.name, d]));
+    const readableHeld = (await storage.transaction('ro', (tx) => readHeld(tx))).filter((h) =>
+      isReadable(h.entry, byName),
+    );
+    if (readableHeld.length > 0)
+      await storage.transaction('rw', async (tx) => {
+        for (const h of readableHeld) tx.delete(h.key);
+      });
+
     const engine = new Engine(
       storage,
       definitions,
@@ -1482,6 +1558,7 @@ export async function createReplica(options: CreateReplicaOptions): Promise<Repl
       random,
       options.scheduler ?? systemScheduler,
       options.compaction,
+      options.holdNewerSchema === true,
     );
     await engine.sweepPending();
     await engine.repairNotifications();
