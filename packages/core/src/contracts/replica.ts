@@ -7,6 +7,8 @@ import type { ConflictRecord, Hashes } from './state.js';
 import type { MetaCompaction, StorageAdapter } from './storage.js';
 import type {
   ApplyIncoming,
+  AuthContext,
+  AuthorizeHook,
   CompactionInfo,
   PeerEntry,
   Snapshot,
@@ -212,6 +214,22 @@ export interface CreateReplicaOptions {
    * the prefix rule of R4.10 applies.
    */
   readonly holdNewerSchema?: boolean;
+  /**
+   * [ADV] Authorization hook (R16.4), called before this replica applies incoming ops (pulled or
+   * pushed to its endpoint) and before it sends ops (pushes, or pulls served by its endpoint).
+   * Anything but `true` denies with `UNAUTHORIZED`; nothing changes. Absent: allow all.
+   */
+  readonly authorize?: AuthorizeHook;
+}
+
+/** [ADV] Options of `replica.endpoint()` (R16.3). */
+export interface EndpointOptions {
+  /**
+   * The caller as authenticated by the transport that serves this endpoint. Every request's
+   * claimed `replicaId`, and the origin of every pushed op, must be one it may act as;
+   * otherwise `UNAUTHORIZED`. It is bound here, never read from a request.
+   */
+  readonly auth?: AuthContext;
 }
 
 /** The main interface for interacting with a WEAVE replica. */
@@ -229,7 +247,7 @@ export interface Replica {
   /** Sync with a remote endpoint. */
   sync(endpoint: SyncEndpoint, options?: SyncOptions): Promise<SyncResult>;
   /** An endpoint that serves this replica, for direct replica-to-replica sync (R4.3). */
-  endpoint(): SyncEndpoint;
+  endpoint(options?: EndpointOptions): SyncEndpoint;
   /** Get the current replica status. */
   status(): Promise<ReplicaStatus>;
   /** Compute hashes of the current state. */
@@ -315,6 +333,8 @@ export interface SyncHost {
   noteCompaction?(info: CompactionInfo): Promise<void>;
   /** [ADV] True when this replica holds unreadable ops (R8.7), so peers send it every op. */
   holdsNewer?(): boolean;
+  /** [ADV] Runs the authorization hook before ops are sent to `peer` (R16.4). Optional. */
+  authorizeSend?(peer: ReplicaId, lines: readonly string[]): Promise<void>;
 }
 
 /** Re-exported for convenience in adapter and app code. */

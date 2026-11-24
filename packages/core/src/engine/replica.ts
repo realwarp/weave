@@ -25,6 +25,7 @@ import type {
   ConflictApi,
   ConflictFilter,
   CreateReplicaOptions,
+  EndpointOptions,
   Query,
   RecordView,
   Replica,
@@ -44,8 +45,11 @@ import {
 } from '../contracts/storage.js';
 import type {
   ApplyResult,
+  AuthContext,
+  AuthorizeHook,
   BlockedOrigin,
   CompactionInfo,
+  OpSummary,
   PeerEntry,
   Rejection,
   Snapshot,
@@ -92,6 +96,7 @@ import {
   planRecord,
 } from '../sync/compaction.js';
 import { runSync } from '../sync/engine.js';
+import { assertIdentity, runAuthorize, summarize } from '../sync/authorize.js';
 import { Mutex } from './mutex.js';
 import {
   EMPTY_STATE,
@@ -212,6 +217,7 @@ class Engine implements Replica, SyncHost {
     private readonly compactionOptions: CompactionOptions | undefined = undefined,
     private readonly hold: boolean = false,
     private readonly invalid: ReadonlySet<string> = new Set(),
+    private readonly authorizeHook: AuthorizeHook | undefined = undefined,
   ) {
     this.id = replicaId;
     this.replicaId = replicaId;
@@ -627,10 +633,42 @@ class Engine implements Replica, SyncHost {
 
   // ---------------------------------------------------------------- apply path (design 7.3)
 
-  applyIncoming = (lines: readonly string[], peerId: ReplicaId): Promise<ApplyResult> => {
+  applyIncoming = async (
+    lines: readonly string[],
+    peerId: ReplicaId,
+    auth?: AuthContext,
+  ): Promise<ApplyResult> => {
     this.alive();
+    // [ADV] R16.3, R16.4: identity and the hook decide BEFORE anything is read or written. The
+    // hook runs outside the mutex. Lines that do not parse are left to phase A1 (VALIDATION_FAILED).
+    if (lines.length > 0 && (auth !== undefined || this.authorizeHook !== undefined)) {
+      let ops: OpSummary[] | undefined;
+      try {
+        ops = summarize(lines);
+      } catch {
+        ops = undefined;
+      }
+      if (ops !== undefined) {
+        assertIdentity(
+          auth,
+          peerId,
+          ops.map((o) => o.replicaId),
+        );
+        await runAuthorize(this.authorizeHook, {
+          direction: 'apply',
+          peer: peerId,
+          ...(auth === undefined ? {} : { auth }),
+          ops,
+        });
+      }
+    }
     return this.mutex.run(() => this.applyLocked(lines, peerId, false));
   };
+
+  /** [ADV] R16.4: the hook decides before this replica sends `lines` to `peer`. */
+  async authorizeSend(peer: ReplicaId, lines: readonly string[]): Promise<void> {
+    await runAuthorize(this.authorizeHook, { direction: 'send', peer, ops: summarize(lines) });
+  }
 
   /** At open: promote buffered ops that became contiguous, and clean stale buffer entries. */
   sweepPending(): Promise<ApplyResult> {
@@ -981,10 +1019,13 @@ class Engine implements Replica, SyncHost {
 
   // ---------------------------------------------------------------- endpoint (design 8.1)
 
-  endpoint(): SyncEndpoint {
+  endpoint(options: EndpointOptions = {}): SyncEndpoint {
+    // [ADV] R16.3: the identity is bound to this endpoint, never taken from a request.
+    const auth = options.auth;
     return {
       pull: async (request) => {
         this.alive();
+        assertIdentity(auth, request.replicaId);
         const vector = await this.readVector();
         const selected = await selectReadablePrefix({
           senderVector: vector,
@@ -995,6 +1036,13 @@ class Engine implements Replica, SyncHost {
           direction: 'pull',
           ...(request.origins === undefined ? {} : { origins: request.origins }),
           read: (origin, after, limit) => this.readOps(origin, after, limit),
+        });
+        // [ADV] R16.4: the hook decides before ops leave (no call when nothing is sent).
+        await runAuthorize(this.authorizeHook, {
+          direction: 'send',
+          peer: request.replicaId,
+          ...(auth === undefined ? {} : { auth }),
+          ops: summarize(selected.lines),
         });
         return {
           endpointId: this.replicaId,
@@ -1008,7 +1056,8 @@ class Engine implements Replica, SyncHost {
       },
       push: async (request) => {
         this.alive();
-        const result = await this.applyIncoming(request.ops, request.replicaId);
+        assertIdentity(auth, request.replicaId);
+        const result = await this.applyIncoming(request.ops, request.replicaId, auth);
         const pushed: Record<string, number> = {};
         for (const line of request.ops) {
           const env = readEnvelope(line);
@@ -1025,6 +1074,7 @@ class Engine implements Replica, SyncHost {
       },
       ack: async (request) => {
         this.alive();
+        assertIdentity(auth, request.replicaId);
         await this.mergePeerAck(request.replicaId, request.durable);
       },
       // [ADV] A replica serves its own snapshot for direct bootstrapping (R4.8).
@@ -1615,6 +1665,7 @@ export async function createReplica(options: CreateReplicaOptions): Promise<Repl
       options.compaction,
       options.holdNewerSchema === true,
       invalid,
+      options.authorize,
     );
     await engine.sweepPending();
     await engine.repairNotifications();

@@ -36,6 +36,7 @@ const ORIGIN_ERRORS: readonly ErrorCode[] = [
   'NOT_SUPPORTED',
   'MIGRATION_FAILED',
   'PEER_REMOVED',
+  'UNAUTHORIZED', // [ADV] R16.3, R16.4: one denied origin never blocks the others
 ];
 
 function isOriginError(e: unknown): e is WeaveError {
@@ -127,6 +128,43 @@ export async function runSync(
     }
   };
 
+  /**
+   * A pull that skips origins already quarantined. Without quarantined pull origins this is the
+   * plain 0.1.0 pull. With them, only the other origins the endpoint holds are asked for.
+   */
+  const pullAllowed = async (local: VersionVector): Promise<PullResponse> => {
+    const deniedPull = [...rejected.values()].some((r) => r.direction === 'pull');
+    if (!deniedPull) return pull(local, batch);
+    const origins = Object.keys(endpointDurable)
+      .filter((o) => !rejected.has(o) && (endpointDurable[o] ?? 0) > (local[o] ?? 0))
+      .sort();
+    if (origins.length === 0) {
+      const probe = await pull(local, 0);
+      return probe;
+    }
+    return pull(local, batch, origins);
+  };
+
+  const isolateDeniedPull = async (local: VersionVector): Promise<void> => {
+    // A vector-only pull sends no ops, so no hook runs; an identity failure still throws here.
+    const probe = await pull(local, 0);
+    noteEndpoint(probe);
+    const origins = Object.keys(probe.durable)
+      .filter((o) => !rejected.has(o) && (probe.durable[o] ?? 0) > (local[o] ?? 0))
+      .sort();
+    for (const origin of origins) {
+      try {
+        const res = await pull(await host.readVector(), batch, [origin]);
+        noteEndpoint(res);
+        if (res.ops.length > 0) await applyPulled(res.ops);
+      } catch (e) {
+        if (!isOriginError(e)) throw e;
+        rejected.set(origin, { origin, code: e.code, direction: 'pull' });
+        host.emit({ type: 'error', code: e.code, message: e.message });
+      }
+    }
+  };
+
   let failure: WeaveError | undefined;
   const blockedPull = new Map<string, BlockedOrigin>();
   const blockedPush = new Map<string, BlockedOrigin>();
@@ -140,7 +178,16 @@ export async function runSync(
       // 1. Pull loop.
       for (let i = 0; i < MAX_LOOP; i++) {
         const local = await host.readVector();
-        const res = await pull(local, batch);
+        let res: PullResponse;
+        try {
+          res = await pullAllowed(local);
+        } catch (e) {
+          // [ADV] The endpoint's hook denied the batch (R16.4): find the origins it denies with
+          // one pull per origin, quarantine those, and keep syncing the rest.
+          if (!(e instanceof WeaveError) || e.code !== 'UNAUTHORIZED') throw e;
+          await isolateDeniedPull(local);
+          res = await pullAllowed(await host.readVector());
+        }
         noteEndpoint(res);
         for (const b of res.blocked) blockedPull.set(b.origin, b);
         const lines = res.ops.filter((l) => !rejected.has(readEnvelope(l).replicaId));
@@ -176,6 +223,8 @@ export async function runSync(
           if (selected.lines.length === 0) break;
           let res;
           try {
+            // [ADV] R16.4: this replica's own hook decides before ops leave.
+            await host.authorizeSend?.(peerId ?? 'unknown', selected.lines);
             res = await retry(() =>
               endpoint.push({ replicaId: host.replicaId, support, ops: selected.lines }),
             );
