@@ -521,7 +521,7 @@ Each task is its own gate with an independent review. **The order of requirement
   - Done when: the counter resolver, custom registration and the exported `assertResolverDeterministic` helper pass the direct-call permutation tests. (The GHOSTLINE counter is T5.9.)
   - Review: independent reviewer agent (Testing and QA); report `docs/reviews/T5.4.md`; the task merges only after the report records no open findings.
 
-- [ ] **T5.5 [ADV] Held newer-schema ops**
+- [x] **T5.5 [ADV] Held newer-schema ops**
   - Owner: Core engine.
   - Paths: `packages/core/src/engine/held.ts`, `packages/core/test/engine/held*.test.ts`.
   - Depends: Gate 4, T5.4. Req: R8.7.
