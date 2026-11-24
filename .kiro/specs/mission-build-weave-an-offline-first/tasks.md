@@ -528,7 +528,7 @@ Each task is its own gate with an independent review. **The order of requirement
   - Done when: newer-version ops are stored but excluded from visible state, a status field reports that an update is needed, and they apply after an upgrade with equal hashes.
   - Review: independent reviewer agent (Testing and QA); report `docs/reviews/T5.5.md`; the task merges only after the report records no open findings.
 
-- [ ] **T5.6 [ADV] Authorization hook and authenticated identity**
+- [x] **T5.6 [ADV] Authorization hook and authenticated identity**
   - Owner (non-overlapping parts):
     - Synchronization (replica side): `packages/core/src/sync/authorize.ts`, `packages/core/test/sync/authorize*.test.ts`.
     - Relay (relay side): `packages/relay/src/core/authorize.ts`, `packages/relay/test/authorize/**`.
