@@ -475,7 +475,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
   - Depends: Gate 3, T4.3, T4.5. Req: R15.5, R19, R20.2, R20.3.
   - Done when: CI is green on Ubuntu, Windows and macOS (including the per-platform lock tests), Playwright on Ubuntu, benchmarks, audit, and a job that builds twice and compares output hashes; **the annotated tag `v0.1.0` exists on the commit that passed CI and contains the `CHANGELOG.md` entry from T4.3.** If T4.7 finds issues, they are fixed and this task's owner recreates the tag on the fixed commit before T4.7 records its pass.
 
-- [ ] **T4.7 Final independent review [MVP], review-only**
+- [x] **T4.7 Final independent review [MVP], review-only**
   - Owner: independent reviewer agents (Testing and QA). This task changes no product file and creates no tag or changelog entry.
   - Paths (read): the whole repository from a clean clone at the tagged commit, including the `v0.1.0` tag (T4.6) and `CHANGELOG.md` (T4.3); (write): `docs/reviews/T4.7.md` only.
   - Depends: T4.1 to T4.6. Req: R15.7, requirements section 4.
