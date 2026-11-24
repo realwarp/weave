@@ -62,6 +62,11 @@ export interface Collection<T> {
   update(recordId: string, patch: Partial<T>, options: WriteOptions): Promise<WriteResult>;
   /** Delete a record. */
   delete(recordId: string, options: WriteOptions): Promise<WriteResult>;
+  /**
+   * [ADV] Undeletes a record: the restore cancels every delete op this replica holds for it (D6).
+   * `NOT_SUPPORTED` unless the collection enables `deletes.restore`.
+   */
+  restore(recordId: string, options: WriteOptions): Promise<WriteResult>;
   /** Get a single record by ID. */
   get(recordId: string): Promise<RecordView<T> | undefined>;
   /** Query records with optional filtering and sorting. */
@@ -94,8 +99,8 @@ export interface ChangeEvent {
   readonly collection: string;
   /** The ID of the record that changed. */
   readonly recordId: string;
-  /** What kind of change occurred. */
-  readonly kind: 'set' | 'delete';
+  /** What kind of change occurred (`restore` only with the [ADV] feature). */
+  readonly kind: 'set' | 'delete' | 'restore';
 }
 
 /** Current status of the replica. */

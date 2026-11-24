@@ -66,6 +66,7 @@ import {
   validateLocalWrite,
 } from '../schema/index.js';
 import { buildOpHistory, conflictHistory, deriveRecord } from '../state/index.js';
+import { isDeleted, restoreEnabled } from '../state/restore.js';
 import { selectReadablePrefix, isSupported } from '../sync/select.js';
 import { SNAPSHOT_FORMAT, sealSnapshot, verifySnapshotEnvelope } from '../sync/snapshot.js';
 import {
@@ -93,6 +94,17 @@ import {
   valuesOf,
   writePeer,
 } from './store.js';
+
+/** [ADV] A `restore` op is accepted only by a collection that enables it (R6.9, A1/A2). */
+function assertRestoreAccepted(definition: AnyDefinition): void {
+  if (!restoreEnabled(definition)) {
+    throw new WeaveError(
+      'NOT_SUPPORTED',
+      `Collection "${definition.name}" does not enable restore (deletes.restore)`,
+      { details: { collection: definition.name } },
+    );
+  }
+}
 
 /**
  * [ADV] A record re-derived after compaction still lists every conflict ID it ever had: the
@@ -258,6 +270,8 @@ class Engine implements Replica, SyncHost {
         this.write(name, 'update', recordId, patch as unknown, options),
       delete: (recordId: string, options: WriteOptions) =>
         this.write(name, 'delete', recordId, {}, options),
+      restore: (recordId: string, options: WriteOptions) =>
+        this.write(name, 'restore', recordId, {}, options),
       get: (recordId: string) => this.get<T>(name, recordId),
       query: (query?: Query<T>) => this.query<T>(name, query),
       history: (recordId: string) => this.opHistory(name, recordId),
@@ -266,7 +280,7 @@ class Engine implements Replica, SyncHost {
 
   private async write(
     collection: string,
-    action: 'create' | 'update' | 'delete',
+    action: 'create' | 'update' | 'delete' | 'restore',
     recordId: string | null,
     value: unknown,
     options: WriteOptions | undefined,
@@ -281,11 +295,12 @@ class Engine implements Replica, SyncHost {
       );
     }
     const definition = this.definition(collection);
-    const kind = action === 'delete' ? 'delete' : 'set';
+    if (action === 'restore') assertRestoreAccepted(definition);
+    const kind = action === 'delete' || action === 'restore' ? action : 'set';
     const fields =
-      action === 'delete'
-        ? {}
-        : validateLocalWrite(definition, action === 'create' ? 'create' : 'update', value);
+      kind === 'set'
+        ? validateLocalWrite(definition, action === 'create' ? 'create' : 'update', value)
+        : {};
     const payloadHash = await mutationPayloadHash({ collection, kind, recordId, fields });
 
     return this.mutex.run(async () => {
@@ -316,7 +331,16 @@ class Engine implements Replica, SyncHost {
               `Record "${recordId}" does not exist in "${collection}"`,
             );
           }
-          if (pre.ops.some((o) => o.kind === 'delete')) {
+          // D6: without `deletes` options this is "any delete op held" (0.1.0).
+          const deleted = isDeleted(pre.ops, definition);
+          if (action === 'restore' && !deleted) {
+            throw new WeaveError(
+              'VALIDATION_FAILED',
+              `Record "${recordId}" in "${collection}" is not deleted`,
+              { details: { collection, recordId } },
+            );
+          }
+          if (action !== 'restore' && deleted) {
             throw new WeaveError('RECORD_DELETED', `Record "${recordId}" was deleted`, {
               details: { collection, recordId },
             });
@@ -569,8 +593,12 @@ class Engine implements Replica, SyncHost {
     // Phase A2: application schema of readable ops.
     for (const { op } of verified) {
       const definition = this.definitions.get(op.collection);
-      if (definition === undefined || op.schemaVersion > definition.version || op.kind === 'delete')
+      if (definition === undefined || op.schemaVersion > definition.version) continue;
+      if (op.kind === 'restore') {
+        assertRestoreAccepted(definition);
         continue;
+      }
+      if (op.kind === 'delete') continue;
       migrateAndCheck(definition, {
         fields: op.fields,
         recordId: op.recordId,
@@ -1029,7 +1057,8 @@ class Engine implements Replica, SyncHost {
         throw new WeaveError('SCHEMA_TOO_NEW', 'The snapshot needs a newer schema; upgrade first', {
           details: { collection: op.collection, requiredVersion: op.schemaVersion },
         });
-      if (op.kind !== 'delete')
+      if (op.kind === 'restore') assertRestoreAccepted(definition);
+      else if (op.kind === 'set')
         migrateAndCheck(definition, {
           fields: op.fields,
           recordId: op.recordId,
@@ -1214,8 +1243,16 @@ class Engine implements Replica, SyncHost {
       const writes: Array<{ collection: string; recordId: string; archive: ConflictRecord[] }> = [];
       for (const r of loaded.list) {
         const definition = this.definition(r.collection);
-        const plan = await planRecord(r.ops, r.stored, horizon, (ops) =>
-          deriveRecord(ops, definition, r.collection, r.recordId),
+        // [ADV] With restore or update-wins a deleted record can become live again, and which
+        // deletes count depends on concurrent sets, so its ops all stay (ADR-0015, T5.3).
+        const keepTombstones =
+          restoreEnabled(definition) || definition.deletes?.policy === 'update-wins';
+        const plan = await planRecord(
+          r.ops,
+          r.stored,
+          horizon,
+          (ops) => deriveRecord(ops, definition, r.collection, r.recordId),
+          { keepTombstones },
         );
         if (plan.remove.length === 0) continue;
         const replay = await conflictHistory(r.ops, definition, r.collection, r.recordId);

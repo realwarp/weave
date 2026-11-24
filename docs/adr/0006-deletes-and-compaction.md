@@ -24,9 +24,10 @@ breaks convergence for members that have not received them.
   for each origin, the lowest seq acknowledged by every registered member. Offline members count as
   zero. `removePeer` is explicit only; there is no time-based expiry. Ops at or below the horizon
   may be compacted.
-- `restore` and an `update-wins` policy are [ADV] (they need restore ops that name the deletes they
-  cancel). They are not implemented: the MVP API has no `restore` method, and receiving replicas
-  reject any op kind other than `set` and `delete`.
+- `restore` and an `update-wins` policy are [ADV]. In 0.1.0 they were not implemented: the API had
+  no `restore` method, and receiving replicas rejected any op kind other than `set` and `delete`.
+  0.2.0 (T5.3) implements both as per-collection opt-ins; see "Restore and update-wins" below and
+  ADR-0015.
 
 ### Trust assumption for compaction
 
@@ -58,6 +59,31 @@ compacted that it does not have, and that member would then miss them.
 - **Tombstones (R3.13).** A deleted record keeps every op until a delete op is covered by the
   horizon (full tombstone). Then its covered `set` ops go and its delete ops stay: the compact
   tombstone (record ID plus delete op ID). A record with an open delete conflict keeps its ops.
+  In a collection with `deletes.restore` or the `update-wins` policy a deleted record keeps every
+  op (no compact tombstone), because it can become live again (T5.3).
+
+### Restore and update-wins (0.2.0, T5.3)
+
+- **Opt-in per collection.** `defineCollection({ ..., deletes: { policy, restore } })`. Without
+  `deletes` the collection behaves exactly as in 0.1.0: delete wins and `restore()` and incoming
+  restore ops fail with `NOT_SUPPORTED`. Every replica of a collection must use the same options,
+  set when the collection is first defined; changing them on existing data changes what the same op
+  set means.
+- **Restore.** `collection.restore(recordId, { mutationId })` writes a `restore` op with empty
+  fields. It cancels every delete op that happens-before it. A delete concurrent with the restore
+  is not cancelled, so the record stays deleted until a later restore sees it. The record comes
+  back with the values derived from all its `set` ops. Restoring a record that is not deleted is
+  `VALIDATION_FAILED`.
+- **Update-wins.** A delete is ignored when some `set` op on the record is concurrent with it. A
+  delete that saw every `set` still deletes. The concurrency is still reported as a delete
+  conflict.
+- **Existence.** A record is deleted if and only if at least one delete is neither cancelled nor
+  ignored. Local writes check this derived state (R6.8): a record that is live again accepts
+  updates. A delete cancelled by a restore leaves the current conflict view and stays in the
+  conflict history as `superseded`.
+- **Compaction.** See the tombstone rule above: deleted records of these collections keep all ops.
+  A live record still compacts covered, non-frontier ops, including cancelled deletes and their
+  restores, under the usual "identical re-derived record" check.
 - **What the relay discards.** Op lines covered by the horizon (every member holds them). The
   relay stays opaque: it reads no field values.
 - **Never partial history (R3.9).** A request for ops of origin `o` after a `seq` below

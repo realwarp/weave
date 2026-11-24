@@ -14,6 +14,7 @@ import type { ConflictRecord } from '../contracts/state.js';
 import { compareD4, happensBefore, isConcurrent, opIdKey, toOpId } from '../ops/order.js';
 import { getResolver } from '../resolvers/index.js';
 import { migrateFields } from '../schema/index.js';
+import { isDeleted, uncancelledDeletes } from './restore.js';
 
 export interface FieldWrite {
   readonly op: Op;
@@ -119,7 +120,11 @@ export async function deriveState(
   recordId: string,
 ): Promise<DerivedState> {
   const sorted = [...ops].sort(compareD4);
-  const deleted = sorted.some((o) => o.kind === 'delete');
+  // Step 2 (D6): with no `deletes` options and no restore ops, any delete op deletes the record.
+  const deleted = isDeleted(sorted, definition);
+  // A delete that a restore cancelled no longer conflicts with anything; it stays in history.
+  const restored = new Set(sorted.filter((o) => o.kind === 'delete').map(opIdKey));
+  for (const d of uncancelledDeletes(sorted, definition)) restored.delete(opIdKey(d));
   const byField = new Map<string, FieldWrite[]>();
   for (const { op, fields } of migratedSetOps(sorted, definition)) {
     for (const [field, value] of Object.entries(fields)) {
@@ -152,6 +157,7 @@ export async function deriveState(
     }
   }
   for (const group of deleteGroups(sorted)) {
+    if (restored.has(opIdKey(group.del))) continue;
     const groupOps = [group.del, ...group.concurrent];
     conflicts.push({
       conflictId: await deleteConflictId(collection, recordId, groupOps),

@@ -5,7 +5,12 @@ import { assertSupported, toCanonical } from '../canonical/encode.js';
 import { WeaveError } from '../contracts/errors.js';
 import type { JsonValue } from '../contracts/json.js';
 import type { ResolverName } from '../contracts/resolver.js';
-import type { CollectionDefinition, FieldSpec, Migration } from '../contracts/schema.js';
+import type {
+  CollectionDefinition,
+  DeleteOptions,
+  FieldSpec,
+  Migration,
+} from '../contracts/schema.js';
 import { COLLECTION_PATTERN } from '../ops/op.js';
 
 type Req<O> = O extends { readonly required: true } ? true : false;
@@ -152,6 +157,7 @@ export function defineCollection<const F extends Record<string, FieldSpec>>(defi
   readonly version: number;
   readonly fields: F;
   readonly migrations?: Readonly<Record<number, Migration>>;
+  readonly deletes?: DeleteOptions;
 }): CollectionDefinition<F> {
   const { name, version, fields } = definition;
   const migrations = definition.migrations ?? {};
@@ -176,7 +182,30 @@ export function defineCollection<const F extends Record<string, FieldSpec>>(defi
       );
     }
   }
-  return Object.freeze({ name, version, fields, migrations: Object.freeze({ ...migrations }) });
+  const base = { name, version, fields, migrations: Object.freeze({ ...migrations }) };
+  if (definition.deletes === undefined) return Object.freeze(base);
+  return Object.freeze({ ...base, deletes: checkDeleteOptions(name, definition.deletes) });
+}
+
+/** [ADV] Validates and freezes `deletes` options (D6, R6.9). */
+function checkDeleteOptions(collection: string, options: DeleteOptions): DeleteOptions {
+  const bad = (message: string): never => {
+    throw new WeaveError('VALIDATION_FAILED', `Collection "${collection}": ${message}`, {
+      details: { collection },
+    });
+  };
+  if (typeof options !== 'object' || options === null || Array.isArray(options))
+    bad('deletes must be an object');
+  for (const key of Object.keys(options))
+    if (key !== 'policy' && key !== 'restore') bad(`unknown deletes option "${key}"`);
+  const { policy, restore } = options;
+  if (policy !== undefined && policy !== 'delete-wins' && policy !== 'update-wins')
+    bad('deletes.policy must be "delete-wins" or "update-wins"');
+  if (restore !== undefined && typeof restore !== 'boolean') bad('deletes.restore must be boolean');
+  return Object.freeze({
+    ...(policy === undefined ? {} : { policy }),
+    ...(restore === undefined ? {} : { restore }),
+  });
 }
 
 function fail(

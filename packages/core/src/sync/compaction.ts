@@ -76,12 +76,21 @@ export async function planRecord(
   stored: DerivedRecord,
   horizon: VersionVector,
   derive: (ops: readonly Op[]) => Promise<DerivedRecord>,
+  options: {
+    /**
+     * [ADV] Keep every op of a deleted record (R6.9): with `restore` or `update-wins` a deleted
+     * record can become live again, so a compact tombstone would make replicas diverge.
+     */
+    readonly keepTombstones?: boolean | undefined;
+  } = {},
 ): Promise<RecordPlan> {
   const nothing = { remove: [], keep: ops };
   const deletes = ops.filter((o) => o.kind === 'delete');
   let remove: Op[];
-  if (deletes.length > 0) {
-    // Full tombstone until a delete op is covered; then the compact tombstone (R3.13).
+  if (stored.deleted) {
+    if (options.keepTombstones === true) return nothing;
+    // Full tombstone until a delete op is covered; then the compact tombstone (R3.13). Delete and
+    // restore ops always stay.
     if (!deletes.some((d) => covered(horizon, d))) return nothing;
     remove = ops.filter((o) => o.kind === 'set' && covered(horizon, o));
   } else {

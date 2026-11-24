@@ -39,6 +39,22 @@ doc comment. Rules:
 | T5.1 | `CreateReplicaOptions.compaction?: CompactionOptions` (`enabled`, `members`), `Replica.compact(): Promise<CompactionReport>`, `Replica.removePeer(id)`, `ReplicaStatus.compaction?`, optional `SyncHost.noteCompaction?(info)`. |
 | T5.2 | `Snapshot` (format `weave-snapshot/1`: source, vectors, `compactedThrough`, removed list, every op line, kept conflict history, SHA-256 `hash`); optional `SyncEndpoint.snapshot?()` and `putSnapshot?(s)`; `Replica.exportSnapshot()` and `Replica.bootstrap(snapshotOrEndpoint): Promise<BootstrapReport>`. Relay: `RelayCore.snapshot()`, `RelayCore.putSnapshot()`, `GET` and `PUT /v1/snapshot`. |
 
+| T5.3 | `CollectionDefinition.deletes?: DeleteOptions` (`policy?: 'delete-wins' \| 'update-wins'`, `restore?: boolean`); `Collection.restore(recordId, { mutationId })`; `'restore'` in `OpPayload.kind`, `OpHistoryEntry.kind` and `ChangeEvent.kind`. |
+
+### Restore and update-wins (T5.3)
+
+- Semantics are in ADR-0006 ("Restore and update-wins") and D6. Both are pure functions of the op
+  set and the collection's `deletes` options (`packages/core/src/state/restore.ts`).
+- **The one widened union.** `kind` gains the value `'restore'`. This is the only Phase 5 change
+  that widens an existing type, and the design (section 15 table) reserved it. The
+  value can only appear for collections that set `deletes.restore`, so 0.1.0 code that never opts
+  in never sees it at run time. TypeScript code with an exhaustive `switch` over `kind` must add a
+  case when it upgrades; both demo apps compile unchanged.
+- **Mixed versions.** `verifyOpLine` now accepts `restore` structurally (empty fields required). A
+  replica rejects a restore op with `NOT_SUPPORTED` (the whole batch, as in 0.1.0) unless the op's
+  collection enables restore. A 0.1.0 relay or replica rejects restore ops with `NOT_SUPPORTED`,
+  so a group that enables restore must upgrade every member and the relay first.
+
 ### Snapshot design (T5.2)
 
 - A snapshot holds **op lines, not derived state**: the importer verifies the hash and every op

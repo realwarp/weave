@@ -82,7 +82,7 @@ export function conflictViewHash(
 /** Mutation payload hash (design 4, 7.2) used to detect `MUTATION_ID_REUSED`. */
 export function mutationPayloadHash(input: {
   readonly collection: string;
-  readonly kind: 'set' | 'delete';
+  readonly kind: 'set' | 'delete' | 'restore';
   readonly recordId: string | null;
   readonly fields: Readonly<Record<string, JsonValue>>;
 }): Promise<string> {
