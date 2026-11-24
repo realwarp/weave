@@ -175,6 +175,33 @@ describe('holding (R8.7)', () => {
     expect(r.status === 'partial' && r.code).toBe('PEER_SCHEMA_OLDER');
   });
 
+  it('an older endpoint that ignores `hold` keeps the 0.1.0 prefix rule and corrupts nothing', async () => {
+    const { writer, shared } = await newerWriter();
+    const real = writer.endpoint();
+    // A 0.1.0 endpoint: drops the unknown `hold` field and reports its real support.
+    const old: typeof real = {
+      ...real,
+      pull: async (request) => {
+        const { hold: _ignored, ...rest } = request;
+        const res = await real.pull(rest);
+        return { ...res, support: { notes: 2, tasks: 1 } };
+      },
+    };
+    const { r: holder } = await open([notesV1], { hold: true });
+    const result = await holder.sync(old);
+    expect(result.status === 'partial' && result.code).toBe('PEER_SCHEMA_OLDER');
+    // Only the readable prefix arrived; nothing is held and visible state is the v1 record.
+    expect((await holder.status()).held).toBeUndefined();
+    expect((await holder.collection(notesV1).get(shared))?.value).toEqual({
+      title: 'old',
+      place: 'a/b',
+    });
+    // A later sync with a hold-aware endpoint completes from the blocked point.
+    expect((await holder.sync(real)).status).toBe('complete');
+    expect((await holder.hashes()).ops).toBe((await writer.hashes()).ops);
+    expect((await holder.status()).held?.ops).toBe(3);
+  });
+
   it('a held op that arrives before its gap is buffered, then promoted', async () => {
     const { writer } = await newerWriter();
     const { r: holder } = await open([notesV1], { hold: true });
