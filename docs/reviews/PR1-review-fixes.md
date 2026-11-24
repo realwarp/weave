@@ -13,7 +13,7 @@ Commit 01ae650 fixes both issues and adds regression tests. Boundary check (`scr
 
 ```powershell
 # Build
-cd C:\Users\ashwi\.kiro\crew\scratch\1d579823\weave-release
+cd (local scratch directory)\1d579823\weave-release
 npm run build
 # Exit code: 0
 
@@ -115,7 +115,7 @@ export async function conflictHistory(s: Session): Promise<ConflictRow[]> {
 ### Test confirmation:
 
 ```bash
-cd C:\Users\ashwi\.kiro\crew\scratch\1d579823\pr1-old  # buggy worktree
+cd (local scratch directory)\1d579823\pr1-old  # buggy worktree
 npx vitest run apps/fieldnote/test/logic-migrated-conflict.test.ts
 # FAIL: conflict history across schema versions > a v1 location edit concurrent with a v2 site edit lists both competing values
 # Expected: values = ['North', 'South'] after migration
@@ -201,7 +201,7 @@ export async function notices(s: Session): Promise<Notice[]> {
 ### Test confirmation:
 
 ```bash
-cd C:\Users\ashwi\.kiro\crew\scratch\1d579823\pr1-old  # buggy worktree
+cd (local scratch directory)\1d579823\pr1-old  # buggy worktree
 npx vitest run apps/ghostline/test/logic-claim-frontier.test.ts
 # FAIL: notices follow the conflict frontier > an earlier, causally superseded claim is not part of a later conflict
 # Expected: Ana has no notice (her claim was superseded before the conflict)

@@ -13,9 +13,9 @@ in this repository on purpose (R19.2), together with the steering files and hook
 
 ## Parent repository
 
-The `WEAVE` folder sits inside a home directory (`C:\Users\ashwi`) that also contains a Git
+The `WEAVE` folder sits inside the user's home directory, which also contains a Git
 repository. That parent repository has no commits and is not part of this project. WEAVE was
-initialized as its own Git repository in `C:\Users\ashwi\Desktop\WEAVE` (`git init`), so its
+initialized as its own Git repository in the `WEAVE` folder (`git init`), so its
 history and files are independent of the parent repository, and nothing from the parent
 repository was copied in.
 

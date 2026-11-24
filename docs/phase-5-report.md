@@ -1,7 +1,8 @@
 # Phase 5 report: the [ADV] features
 
-Branch `feat/phase-5-advanced`, final commit `3c175c7`. Starting point: `main` at the v0.1.0
-merge `5e3e5d3`. The v0.1.0 tag is unchanged (tag object `b9e10ff`, commit `4b26e91`).
+Branch `feat/phase-5-advanced`. The Phase 5 work (code, tests, README and changelog) ends at
+commit `3c175c7`; commit `5022b74` added this report. Starting point: `main` at the v0.1.0 merge
+`5e3e5d3`. The v0.1.0 tag is unchanged (tag object `b9e10ff`, commit `4b26e91`).
 
 ## Result
 
@@ -49,9 +50,15 @@ runs every gate on the reverted tree, and writes a SHA-256 manifest of all logs.
 checked each accepted report's manifest against the files and against an independent coordinator
 run of the same mutations.
 
-## Final verification (commit `3c175c7`)
+The raw logs stay on the review machine and are not in the repository. In the review files,
+local machine paths are written as `(local scratch directory)`, `(reviewer's own scratch
+directory)` and `(repository root)`. The folder names under them (for example `t57-logs-wQyuYJ`)
+and every manifest hash are unchanged.
 
-Run in a fresh worktree with raw logs (manifest
+## Original Phase 5 verification (commit `3c175c7`)
+
+These results were recorded on `3c175c7`, before this report was added. Run in a fresh worktree
+with raw logs (manifest
 `1FA4391451A1D5E5A86D94144DEC72E03EC94BCB20620B176607167FBB00A2D7`):
 
 | Gate | Result |
@@ -67,6 +74,27 @@ Run in a fresh worktree with raw logs (manifest
 | GitHub Actions CI run 45436024829 | success on all six jobs (Ubuntu, Windows, macOS, browser, benchmarks, reproducible build) |
 
 Test count over Phase 5: 551 at the start of T5.1, 713 at the end.
+
+## Pull request verification (commit `5022b74`)
+
+Pull request #2 (`feat/phase-5-advanced` to `main`) was opened at `5022b74`. That commit differs
+from `3c175c7` only by this report. All gates were run again on `5022b74` in a fresh worktree with
+raw logs (manifest `245A2EEA6B95FA491873A96A4FB96475897ED8BD58B250AE61F86121D470FD6A`):
+
+| Gate | Result |
+| --- | --- |
+| Build, lint, format, test typecheck | exit 0 |
+| Unit, property, scenario and integration tests | exit 0, `Tests  713 passed (713)` in 66 files |
+| Browser tests (Chromium) | exit 0, `Tests  27 passed (27)` in 2 files |
+| Boundary and license checks, API docs, app differences | exit 0 |
+| GHOSTLINE and FIELDNOTE demos | exit 0, both converge (GHOSTLINE prints `me too = 4` on all devices) |
+| Playwright UI tests, both apps | 1 passed each |
+| Reproducible build | pass, both builds `6cdf4fe78be999e2ac48ab0e421ee39b61963e8d99f134a4dec4f4a26d8547da` |
+| Benchmarks | pass (10,000 ops in 1.30 s; 1,000-op sync in 0.11 s) |
+| `npm audit --omit=dev` | 0 vulnerabilities |
+| GitHub Actions CI run 45441102303 (`pull_request`, head `5022b74`) | success on all six jobs |
+
+The documentation cleanup committed after `5022b74` changes only files under `docs/`.
 
 ## Compatibility
 
@@ -91,7 +119,8 @@ New features with no breaking change to existing behaviour, so a minor version u
 Versioning. The `[Unreleased]` section of `CHANGELOG.md` is written for it. Proposed steps, not
 taken without approval:
 
-1. Open a pull request from `feat/phase-5-advanced` to `main` and merge it after CI.
+1. Merge pull request #2 (`feat/phase-5-advanced` to `main`, opened, not merged) after human
+   approval.
 2. Set `version` to `0.2.0` in the root and package `package.json` files, and date the changelog
    section.
 3. Tag `v0.2.0` on that commit. The existing `v0.1.0` tag stays as it is.
