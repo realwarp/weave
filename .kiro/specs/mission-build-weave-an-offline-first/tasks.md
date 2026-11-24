@@ -498,7 +498,7 @@ Each task is its own gate with an independent review. **The order of requirement
   - Done when: the horizon comes from relay-published acknowledgements; offline and never-acknowledging members count as zero; `NEEDS_SNAPSHOT` is returned for ops below `compactedThrough`; the durable removed list works; compaction is off by default; the trust-assumption text is in ADR-0006; all compaction tests pass.
   - Review: independent reviewer agent (Testing and QA); report `docs/reviews/T5.1.md`; the task merges only after the report records no open findings.
 
-- [ ] **T5.2 [ADV] Snapshot bootstrap**
+- [x] **T5.2 [ADV] Snapshot bootstrap**
   - Owner (non-overlapping parts):
     - Synchronization: `packages/core/src/sync/snapshot.ts`, `packages/core/test/sync/snapshot*.test.ts`.
     - Relay: `packages/relay/src/core/snapshot.ts`, `packages/relay/test/snapshot/**`.

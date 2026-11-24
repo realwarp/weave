@@ -53,6 +53,10 @@ doc comment. Rules:
 - The relay stores one snapshot uploaded by a member, opaquely: it checks the hash and the op lines
   and requires the snapshot to cover everything the relay discarded. A smaller snapshot never
   replaces a larger one.
+- Trust: the hash proves the snapshot was not altered after it was made, not that its maker was
+  honest. State is always re-derived from verified op lines, but the kept conflict-history archive
+  is taken as given. This is the compaction trust assumption of ADR-0006 (members follow the
+  protocol); it is not safe against a malicious member.
 
 ## Consequences
 
