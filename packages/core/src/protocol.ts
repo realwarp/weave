@@ -66,6 +66,8 @@ export {
   type SelectInput,
   type SelectOutput,
 } from './sync/select.js';
+export { assertIdentity, mayActAs, runAuthorize, summarize } from './sync/authorize.js';
+export type { AuthContext, AuthorizeHook, AuthorizeRequest, OpSummary } from './contracts/sync.js';
 export {
   SNAPSHOT_FORMAT,
   coversCompacted,
