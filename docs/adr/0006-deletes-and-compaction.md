@@ -1,7 +1,7 @@
 # ADR-0006: Delete semantics, tombstone retention, and compaction safety (ADV)
 
-Status: accepted (MVP part implemented; compaction is [ADV] and not implemented). Requirements: R3,
-R6.7, R6.9, D6.
+Status: accepted. MVP part shipped in 0.1.0; compaction ([ADV]) implemented in 0.2.0 (task T5.1,
+"Compaction as built" below). Requirements: R3, R3.6 to R3.14, R6.7, R6.9, D6.
 
 ## Context
 
@@ -36,8 +36,45 @@ they acknowledge only after durable storage and never claim more than they hold.
 Byzantine-safe. A member that over-claims, by mistake or on purpose, could cause ops to be
 compacted that it does not have, and that member would then miss them.
 
+### Compaction as built (0.2.0, T5.1)
+
+- **Off by default.** `createReplica({ compaction: { enabled: true } })` and
+  `new RelayCore({ compaction: { enabled: true } })` turn it on; `compact()` otherwise throws
+  `NOT_SUPPORTED`.
+- **Horizon.** The relay publishes `compaction: { horizon, compactedThrough, removed }` with every
+  pull response. `horizon[o]` is the minimum, over every registered and not removed member, of
+  that member's acknowledged `seq` for origin `o`, capped by the relay's own vector. A member
+  becomes a member by its first request, before it receives data. A member that never
+  acknowledged, or is offline, counts as zero, so nothing it may lack is discarded (R3.7). A
+  replica uses the latest published horizon, capped by its own vector. Without a relay, a closed
+  replica set (`compaction.members`) uses the minimum of this replica's vector and every other
+  member's acknowledged vector.
+- **What a replica discards.** For each record, the ops covered by the horizon that are in no
+  field frontier, and only if the record derived from the remaining ops is identical (values,
+  frontiers, deletion, open conflicts) to the stored record; otherwise the record keeps every op.
+  Superseded `mut/` entries go with their ops. The record's conflict history is copied to
+  `chist/<collection>/<recordId>` first, so `conflicts.history()` and notification marks are
+  unchanged.
+- **Tombstones (R3.13).** A deleted record keeps every op until a delete op is covered by the
+  horizon (full tombstone). Then its covered `set` ops go and its delete ops stay: the compact
+  tombstone (record ID plus delete op ID). A record with an open delete conflict keeps its ops.
+- **What the relay discards.** Op lines covered by the horizon (every member holds them). The
+  relay stays opaque: it reads no field values.
+- **Never partial history (R3.9).** A request for ops of origin `o` after a `seq` below
+  `compactedThrough[o]` fails with `NEEDS_SNAPSHOT` (HTTP 409 from the relay); the peer then
+  bootstraps from a snapshot (T5.2).
+- **`removePeer` (R3.10).** `RelayCore.removePeer(id)` (or `replica.removePeer(id)` in a closed
+  set) records `removed[id] = last seq held`, durably. The member leaves the horizon; later ops
+  from it fail with `PEER_REMOVED`; its earlier ops stay valid. The relay's list reaches replicas
+  through the pull response. There is no time-based removal. A removed device rejoins only with a
+  fresh replica ID through a snapshot.
+- **Hashes.** `hashes().state` and `.conflicts` do not change when a replica compacts.
+  `hashes().ops` covers the ops a replica holds, so replicas compare equal op-set hashes after
+  compacting to the same horizon.
+
 ## Consequences
 
-- MVP storage grows with every op, including deletes. Acceptable at the target scale.
+- MVP storage grows with every op, including deletes. Acceptable at the target scale. With
+  compaction enabled, superseded history is reclaimed once every member holds it.
 - The acknowledgement rules (ADR-0007) already record what compaction will need.
 - The threat model (`docs/threat-model.md`) lists the over-claim limit.

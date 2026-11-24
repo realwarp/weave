@@ -35,6 +35,7 @@ const ORIGIN_ERRORS: readonly ErrorCode[] = [
   'INTEGRITY_CONFLICT',
   'NOT_SUPPORTED',
   'MIGRATION_FAILED',
+  'PEER_REMOVED',
 ];
 
 function isOriginError(e: unknown): e is WeaveError {
@@ -86,7 +87,12 @@ export async function runSync(
         limit,
         ...(origins === undefined ? {} : { origins }),
       }),
-    );
+    ).then(async (res) => {
+      // [ADV] Learn the relay's horizon and removed list (R3.6, R3.10).
+      if (res.compaction !== undefined && host.noteCompaction !== undefined)
+        await host.noteCompaction(res.compaction);
+      return res;
+    });
 
   const noteEndpoint = (res: PullResponse): void => {
     peerId = res.endpointId;

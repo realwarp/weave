@@ -4,9 +4,10 @@ import type { JsonValue, OpId, ReplicaId, VersionVector } from './json.js';
 import type { OpHistoryEntry } from './op.js';
 import type { CollectionDefinition, FieldSpec, InferRecord } from './schema.js';
 import type { ConflictRecord, Hashes } from './state.js';
-import type { StorageAdapter } from './storage.js';
+import type { MetaCompaction, StorageAdapter } from './storage.js';
 import type {
   ApplyIncoming,
+  CompactionInfo,
   PeerEntry,
   Support,
   SyncEndpoint,
@@ -120,6 +121,36 @@ export interface ReplicaStatus {
       }
     >
   >;
+  /** [ADV] Present once this replica has learned a horizon or compacted (R3.6 to R3.10). */
+  readonly compaction?: MetaCompaction;
+}
+
+/**
+ * [ADV] Compaction settings (R3.6 to R3.14). Compaction is off unless `enabled` is true. It
+ * assumes every registered member follows the acknowledgement protocol; it is not safe against a
+ * member that over-claims (ADR-0006).
+ */
+export interface CompactionOptions {
+  /** Allow `compact()` (default false). */
+  readonly enabled: boolean;
+  /**
+   * A closed replica set for compaction without a relay: every member's ID, this replica
+   * included. The horizon is then the minimum of this replica's vector and every other member's
+   * acknowledged vector. Without it, only a horizon published by a relay is used.
+   */
+  readonly members?: readonly ReplicaId[];
+}
+
+/** [ADV] Result of `replica.compact()`. */
+export interface CompactionReport {
+  /** The horizon that was used. */
+  readonly horizon: VersionVector;
+  /** Number of ops discarded by this call. */
+  readonly removedOps: number;
+  /** Number of records that lost ops. */
+  readonly records: number;
+  /** Per origin, the highest `seq` discarded so far. */
+  readonly compactedThrough: VersionVector;
 }
 
 /** Options for creating a new replica. */
@@ -136,6 +167,8 @@ export interface CreateReplicaOptions {
   readonly random?: Random;
   /** Optional scheduler for timing operations. */
   readonly scheduler?: Scheduler;
+  /** [ADV] Compaction settings; compaction is off by default (R3.12). */
+  readonly compaction?: CompactionOptions;
 }
 
 /** The main interface for interacting with a WEAVE replica. */
@@ -162,6 +195,16 @@ export interface Replica {
   rebuild(): Promise<void>;
   /** Generate a new mutation ID using the replica's random source (R5.4). */
   newMutationId(): string;
+  /**
+   * [ADV] Discards ops covered by the horizon that no longer affect state (R3.8). Throws
+   * `NOT_SUPPORTED` unless compaction is enabled and a horizon is known.
+   */
+  compact(): Promise<CompactionReport>;
+  /**
+   * [ADV] Removes a member of a closed replica set from horizon calculations and refuses its later
+   * ops (R3.10). With a relay, call `RelayCore.removePeer` instead; the relay's list syncs here.
+   */
+  removePeer(replicaId: ReplicaId): Promise<void>;
   /** Close the replica and release resources. */
   close(): Promise<void>;
 }
@@ -217,6 +260,8 @@ export interface SyncHost {
   emit(event: WeaveEvent): void;
   /** Update the replica's state. */
   setState(state: ReplicaStatus['state']): void;
+  /** [ADV] Records compaction state an endpoint published (horizon, removed list). Optional. */
+  noteCompaction?(info: CompactionInfo): Promise<void>;
 }
 
 /** Re-exported for convenience in adapter and app code. */

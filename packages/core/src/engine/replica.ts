@@ -19,6 +19,8 @@ import type { Op, OpHistoryEntry } from '../contracts/op.js';
 import type {
   ChangeEvent,
   Collection,
+  CompactionOptions,
+  CompactionReport,
   ConflictApi,
   ConflictFilter,
   CreateReplicaOptions,
@@ -32,10 +34,17 @@ import type {
 } from '../contracts/replica.js';
 import type { CollectionDefinition, FieldSpec, InferRecord } from '../contracts/schema.js';
 import type { ConflictRecord, DerivedRecord, Hashes } from '../contracts/state.js';
-import { keys, type MetaState, type StorageAdapter, type StorageTx } from '../contracts/storage.js';
+import {
+  keys,
+  type MetaCompaction,
+  type MetaState,
+  type StorageAdapter,
+  type StorageTx,
+} from '../contracts/storage.js';
 import type {
   ApplyResult,
   BlockedOrigin,
+  CompactionInfo,
   PeerEntry,
   Rejection,
   Support,
@@ -56,12 +65,24 @@ import {
 } from '../schema/index.js';
 import { buildOpHistory, conflictHistory, deriveRecord } from '../state/index.js';
 import { selectReadablePrefix, isSupported } from '../sync/select.js';
+import {
+  EMPTY_COMPACTION,
+  advanceCompactedThrough,
+  assertNotRemoved,
+  assertServable,
+  capHorizon,
+  closedSetHorizon,
+  mergeArchive,
+  planRecord,
+} from '../sync/compaction.js';
 import { runSync } from '../sync/engine.js';
 import { Mutex } from './mutex.js';
 import {
   EMPTY_STATE,
   readMetaSchema,
   readMetaState,
+  readArchive,
+  readCompaction,
   readMutation,
   readPeer,
   readRecord,
@@ -69,6 +90,17 @@ import {
   valuesOf,
   writePeer,
 } from './store.js';
+
+/**
+ * [ADV] A record re-derived after compaction still lists every conflict ID it ever had: the
+ * archive keeps the history of discarded ops (ADR-0006). Without compaction the archive is empty
+ * and the record is unchanged.
+ */
+function withArchive(record: DerivedRecord, archive: readonly ConflictRecord[]): DerivedRecord {
+  if (archive.length === 0) return record;
+  const ids = new Set([...record.conflictHistoryIds, ...archive.map((c) => c.conflictId)]);
+  return { ...record, conflictHistoryIds: [...ids].sort() };
+}
 
 const MAX_PENDING_PER_ORIGIN = 5000;
 const MAX_COMMIT_RETRIES = 3;
@@ -106,6 +138,7 @@ class Engine implements Replica, SyncHost {
     clock: Clock,
     random: Random,
     scheduler: Scheduler,
+    private readonly compactionOptions: CompactionOptions | undefined = undefined,
   ) {
     this.id = replicaId;
     this.replicaId = replicaId;
@@ -178,6 +211,10 @@ class Engine implements Replica, SyncHost {
     limit: number,
   ): Promise<Array<{ seq: number; collection: string; schemaVersion: number; line: string }>> {
     return this.storage.transaction('ro', async (tx) => {
+      // [ADV] Never serve partial history (R3.9).
+      const compaction = await readCompaction(tx);
+      if (compaction !== undefined && limit > 0)
+        assertServable(compaction.compactedThrough, origin, afterSeq);
       const prefix = keys.opPrefix(origin);
       const rows = await tx.scan(prefix, { after: keys.op(origin, afterSeq), limit });
       return rows.map(([, line]) => {
@@ -254,7 +291,8 @@ class Engine implements Replica, SyncHost {
           const mutation = await readMutation(tx, mutationId);
           const state = await readMetaState(tx);
           const ops = recordId === null ? [] : await readRecordOps(tx, collection, recordId);
-          return { mutation, state, ops };
+          const archive = recordId === null ? [] : await readArchive(tx, collection, recordId);
+          return { mutation, state, ops, archive };
         });
         if (pre.mutation !== undefined) {
           if (pre.mutation.payloadHash !== payloadHash) {
@@ -293,7 +331,10 @@ class Engine implements Replica, SyncHost {
           fields,
           wallTime: this.clock.nowMs(),
         });
-        const record = await deriveRecord([...pre.ops, op], definition, collection, id);
+        const record = withArchive(
+          await deriveRecord([...pre.ops, op], definition, collection, id),
+          pre.archive,
+        );
         const nextState: MetaState = {
           vector: normalizeVector({ ...pre.state.vector, [this.replicaId]: op.seq }),
           maxLamport: Math.max(pre.state.maxLamport, op.lamport),
@@ -423,10 +464,12 @@ class Engine implements Replica, SyncHost {
     for (const [collection, recordId] of await this.recordsInScope(filter)) {
       const definition = this.definitions.get(collection);
       if (definition === undefined) continue;
-      const ops = await this.storage.transaction('ro', (tx) =>
-        readRecordOps(tx, collection, recordId),
-      );
-      out.push(...(await conflictHistory(ops, definition, collection, recordId)));
+      const { ops, archive } = await this.storage.transaction('ro', async (tx) => ({
+        ops: await readRecordOps(tx, collection, recordId),
+        archive: await readArchive(tx, collection, recordId),
+      }));
+      const replay = await conflictHistory(ops, definition, collection, recordId);
+      out.push(...(archive.length === 0 ? replay : mergeArchive(archive, replay)));
     }
     return out;
   }
@@ -513,6 +556,12 @@ class Engine implements Replica, SyncHost {
     // Phase A1: verify every line. Any failure rejects the whole batch.
     const verified: Array<{ op: Op; line: string }> = [];
     for (const line of lines) verified.push({ op: await verifyOpLine(line), line });
+    // [ADV] Ops a removed member wrote after its removal are refused (R3.10).
+    if (verified.length > 0) {
+      const compaction = await this.storage.transaction('ro', (tx) => readCompaction(tx));
+      if (compaction !== undefined)
+        for (const { op } of verified) assertNotRemoved(compaction.removed, op);
+    }
 
     // Phase A2: application schema of readable ops.
     for (const { op } of verified) {
@@ -690,17 +739,27 @@ class Engine implements Replica, SyncHost {
     const records = new Map<string, DerivedRecord>();
     if (touched.size > 0) {
       const existing = await this.storage.transaction('ro', async (tx) => {
-        const m = new Map<string, Op[]>();
-        for (const [k, t] of touched) m.set(k, await readRecordOps(tx, t.collection, t.recordId));
+        const m = new Map<string, { ops: Op[]; archive: ConflictRecord[] }>();
+        for (const [k, t] of touched)
+          m.set(k, {
+            ops: await readRecordOps(tx, t.collection, t.recordId),
+            archive: await readArchive(tx, t.collection, t.recordId),
+          });
         return m;
       });
       for (const [k, t] of touched) {
         const definition = this.definition(t.collection);
         const ops = [
-          ...(existing.get(k) ?? []),
+          ...(existing.get(k)?.ops ?? []),
           ...accepted.filter((a) => `${a.op.collection}/${a.op.recordId}` === k).map((a) => a.op),
         ];
-        records.set(k, await deriveRecord(ops, definition, t.collection, t.recordId));
+        records.set(
+          k,
+          withArchive(
+            await deriveRecord(ops, definition, t.collection, t.recordId),
+            existing.get(k)?.archive ?? [],
+          ),
+        );
       }
     }
     const maxLamport = Math.max(snapshot.state.maxLamport, ...accepted.map((a) => a.op.lamport));
@@ -878,7 +937,14 @@ class Engine implements Replica, SyncHost {
           ...(entry.lastSyncWall === undefined ? {} : { lastSyncWall: entry.lastSyncWall }),
         };
       }
-      return { state: this.syncState, vector: state.vector, pendingBuffer, peers };
+      const compaction = await readCompaction(tx);
+      return {
+        state: this.syncState,
+        vector: state.vector,
+        pendingBuffer,
+        peers,
+        ...(compaction === undefined ? {} : { compaction }),
+      };
     });
   }
 
@@ -908,6 +974,160 @@ class Engine implements Replica, SyncHost {
     await this.mutex.run(async () => {
       const groups = await this.storage.transaction('ro', (tx) => listRecords(tx));
       await rewriteRecords(this.storage, [...this.definitions.values()], groups, undefined);
+    });
+  }
+
+  // ---------------------------------------------------------------- [ADV] compaction (R3.6 to R3.10)
+
+  /** Stores the horizon and removed list a relay published (latest horizon wins). */
+  noteCompaction = async (info: CompactionInfo): Promise<void> => {
+    this.alive();
+    await this.mutex.run(() =>
+      this.storage.transaction('rw', async (tx) => {
+        const stored = await readCompaction(tx);
+        const current = stored ?? EMPTY_COMPACTION;
+        const removed = { ...current.removed };
+        for (const [id, through] of Object.entries(info.removed))
+          removed[id] = Math.min(removed[id] ?? through, through);
+        const next: MetaCompaction = {
+          horizon: normalizeVector(info.horizon),
+          compactedThrough: current.compactedThrough,
+          removed,
+        };
+        // Stored even when empty: an empty horizon is a known horizon (nothing may be discarded).
+        if (stored === undefined || JSON.stringify(next) !== JSON.stringify(current))
+          tx.put(keys.metaCompaction, JSON.stringify(next));
+      }),
+    );
+  };
+
+  async removePeer(replicaId: ReplicaId): Promise<void> {
+    this.alive();
+    if (replicaId === this.replicaId)
+      throw new WeaveError('VALIDATION_FAILED', 'A replica cannot remove itself');
+    await this.mutex.run(() =>
+      this.storage.transaction('rw', async (tx) => {
+        const current = (await readCompaction(tx)) ?? EMPTY_COMPACTION;
+        if (current.removed[replicaId] !== undefined) return;
+        const held = (await readMetaState(tx)).vector[replicaId] ?? 0;
+        const next: MetaCompaction = {
+          ...current,
+          removed: { ...current.removed, [replicaId]: held },
+        };
+        tx.put(keys.metaCompaction, JSON.stringify(next));
+      }),
+    );
+  }
+
+  /** The horizon this replica may compact to, or `undefined` when none is known. */
+  private async currentHorizon(): Promise<VersionVector | undefined> {
+    return this.storage.transaction('ro', async (tx) => {
+      const state = await readMetaState(tx);
+      const compaction = (await readCompaction(tx)) ?? EMPTY_COMPACTION;
+      const members = this.compactionOptions?.members;
+      if (members !== undefined) {
+        const acks = new Map<string, VersionVector>();
+        for (const m of members) acks.set(m, (await readPeer(tx, m))?.ackVector ?? {});
+        return closedSetHorizon(this.replicaId, state.vector, members, acks, compaction.removed);
+      }
+      if ((await tx.get(keys.metaCompaction)) === undefined) return undefined;
+      return capHorizon(compaction.horizon, state.vector);
+    });
+  }
+
+  async compact(): Promise<CompactionReport> {
+    this.alive();
+    if (this.compactionOptions?.enabled !== true)
+      throw new WeaveError('NOT_SUPPORTED', 'Compaction is off; enable it in createReplica');
+    return this.mutex.run(async () => {
+      const horizon = await this.currentHorizon();
+      if (horizon === undefined)
+        throw new WeaveError(
+          'NOT_SUPPORTED',
+          'No horizon is known: sync with a relay, or declare a closed replica set (members)',
+        );
+      const loaded = await this.storage.transaction('ro', async (tx) => {
+        const state = await readMetaState(tx);
+        const compaction = (await readCompaction(tx)) ?? EMPTY_COMPACTION;
+        const groups = await listRecords(tx);
+        const list: Array<{
+          collection: string;
+          recordId: string;
+          ops: Op[];
+          stored: DerivedRecord;
+          archive: ConflictRecord[];
+        }> = [];
+        for (const [collection, ids] of groups) {
+          if (!this.definitions.has(collection)) continue;
+          for (const recordId of ids) {
+            const stored = await readRecord(tx, collection, recordId);
+            if (stored === undefined) continue;
+            list.push({
+              collection,
+              recordId,
+              ops: await readRecordOps(tx, collection, recordId),
+              stored,
+              archive: await readArchive(tx, collection, recordId),
+            });
+          }
+        }
+        const mutations = await tx.scan('mut/');
+        return { state, compaction, list, mutations };
+      });
+
+      const removedOps: Op[] = [];
+      const writes: Array<{ collection: string; recordId: string; archive: ConflictRecord[] }> = [];
+      for (const r of loaded.list) {
+        const definition = this.definition(r.collection);
+        const plan = await planRecord(r.ops, r.stored, horizon, (ops) =>
+          deriveRecord(ops, definition, r.collection, r.recordId),
+        );
+        if (plan.remove.length === 0) continue;
+        const replay = await conflictHistory(r.ops, definition, r.collection, r.recordId);
+        removedOps.push(...plan.remove);
+        writes.push({
+          collection: r.collection,
+          recordId: r.recordId,
+          archive: mergeArchive(r.archive, replay),
+        });
+      }
+      const compactedThrough = advanceCompactedThrough(
+        loaded.compaction.compactedThrough,
+        removedOps,
+      );
+      const report: CompactionReport = {
+        horizon,
+        removedOps: removedOps.length,
+        records: writes.length,
+        compactedThrough,
+      };
+      if (removedOps.length === 0) return report;
+
+      const gone = new Set(removedOps.map((o) => opIdKey(o)));
+      const mutKeys = loaded.mutations
+        .filter(([, text]) => {
+          const m = JSON.parse(text) as { opId: { replicaId: string; seq: number } };
+          return gone.has(opIdKey(m.opId));
+        })
+        .map(([key]) => key);
+      await this.storage.transaction('rw', async (tx) => {
+        const current = await readMetaState(tx);
+        if (current.commit !== loaded.state.commit)
+          throw new WeaveError('STORAGE_CONFLICT', 'Data changed during compaction');
+        for (const op of removedOps) {
+          tx.delete(keys.op(op.replicaId, op.seq));
+          tx.delete(keys.rop(op.collection, op.recordId, op.replicaId, op.seq));
+        }
+        for (const key of mutKeys) tx.delete(key);
+        for (const w of writes)
+          tx.put(keys.chist(w.collection, w.recordId), JSON.stringify(w.archive));
+        tx.put(
+          keys.metaCompaction,
+          JSON.stringify({ ...loaded.compaction, compactedThrough } satisfies MetaCompaction),
+        );
+        tx.put(keys.metaState, JSON.stringify({ ...current, commit: current.commit + 1 }));
+      });
+      return report;
     });
   }
 
@@ -949,17 +1169,30 @@ async function rewriteRecords(
 ): Promise<void> {
   const byName = new Map(definitions.map((d) => [d.name, d]));
   const loaded = await storage.transaction('ro', async (tx) => {
-    const list: Array<{ collection: string; recordId: string; ops: Op[] }> = [];
+    const list: Array<{
+      collection: string;
+      recordId: string;
+      ops: Op[];
+      archive: ConflictRecord[];
+    }> = [];
     for (const [collection, ids] of groups) {
       if (!byName.has(collection)) continue;
       for (const recordId of ids)
-        list.push({ collection, recordId, ops: await readRecordOps(tx, collection, recordId) });
+        list.push({
+          collection,
+          recordId,
+          ops: await readRecordOps(tx, collection, recordId),
+          archive: await readArchive(tx, collection, recordId),
+        });
     }
     return list;
   });
   const derived: Array<{ key: string; value: string }> = [];
-  for (const { collection, recordId, ops } of loaded) {
-    const record = await deriveRecord(ops, byName.get(collection)!, collection, recordId);
+  for (const { collection, recordId, ops, archive } of loaded) {
+    const record = withArchive(
+      await deriveRecord(ops, byName.get(collection)!, collection, recordId),
+      archive,
+    );
     derived.push({ key: keys.rec(collection, recordId), value: JSON.stringify(record) });
   }
   await storage.transaction('rw', async (tx) => {
@@ -1046,6 +1279,7 @@ export async function createReplica(options: CreateReplicaOptions): Promise<Repl
       options.clock ?? systemClock,
       random,
       options.scheduler ?? systemScheduler,
+      options.compaction,
     );
     await engine.sweepPending();
     await engine.repairNotifications();

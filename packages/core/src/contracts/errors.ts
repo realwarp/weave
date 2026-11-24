@@ -18,6 +18,13 @@ export const ERROR_CODES = [
   'STORAGE_CORRUPT',
   'STORAGE_LOCKED',
   'STORAGE_LOCK_LOST',
+  // Added in 0.2.0 for the [ADV] features (ADR-0015). Existing codes keep their meaning.
+  /** Ops from a member that was removed with `removePeer` (R3.10). */
+  'PEER_REMOVED',
+  /** The authorization hook or the authenticated identity refused the ops (R16.3, R16.4). */
+  'UNAUTHORIZED',
+  /** The peer is temporarily refused after repeated invalid data (R10.5). */
+  'PEER_BANNED',
 ] as const;
 
 /** One of the stable error codes in `ERROR_CODES`. */

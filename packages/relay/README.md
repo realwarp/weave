@@ -47,3 +47,23 @@ await relay.close();
 ```
 
 `RelayCore`, `createRelayServer` and `listen` are exported for custom hosting.
+
+## Compaction ([ADV], 0.2.0)
+
+Off by default: `new RelayCore({ storage, compaction: { enabled: true } })`.
+
+- Every pull response carries `compaction: { horizon, compactedThrough, removed }`. The horizon is,
+  per origin, the lowest `seq` every registered member has acknowledged, capped by what the relay
+  holds. A member that never acknowledged counts as zero, so an offline device holds compaction back.
+- `RelayCore.compact()` (or `POST /v1/admin/compact`) discards op lines covered by the horizon.
+- A pull that would need discarded ops fails with `NEEDS_SNAPSHOT` (HTTP 409); the device must
+  bootstrap from a snapshot. The relay never sends partial history.
+- `RelayCore.removePeer(id)` (or `POST /v1/admin/remove-peer` with `{ "replicaId": "..." }`)
+  removes a member from the horizon and refuses its later ops with `PEER_REMOVED` (HTTP 409).
+  Nothing is ever removed because time passed.
+
+Both admin routes need the bearer token when one is set.
+
+**Trust assumption.** The relay records what members claim to hold; it cannot verify it. Compaction
+is safe only if members follow the acknowledgement protocol (acknowledge after durable storage,
+never over-claim). It is not safe against a member that over-claims; see ADR-0006.

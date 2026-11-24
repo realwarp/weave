@@ -6,6 +6,7 @@
 import {
   WeaveError,
   type BlockedOrigin,
+  type CompactionInfo,
   type PullResponse,
   type PushRequest,
   type Support,
@@ -65,6 +66,17 @@ export function decodePullResponse(text: string): PullResponse {
   if (!(h['support'] === '*' || isObject(h['support']))) bad('support');
   if (!Array.isArray(h['blocked'])) bad('blocked');
   if (typeof h['more'] !== 'boolean') bad('more');
+  const compaction = h['compaction'];
+  if (
+    compaction !== undefined &&
+    !(
+      isObject(compaction) &&
+      isObject(compaction['horizon']) &&
+      isObject(compaction['compactedThrough']) &&
+      isObject(compaction['removed'])
+    )
+  )
+    bad('compaction');
   return {
     endpointId: h['endpointId'],
     durable: h['durable'] as VersionVector,
@@ -72,6 +84,7 @@ export function decodePullResponse(text: string): PullResponse {
     blocked: h['blocked'] as BlockedOrigin[],
     more: h['more'],
     ops,
+    ...(compaction === undefined ? {} : { compaction: compaction as unknown as CompactionInfo }),
   };
 }
 

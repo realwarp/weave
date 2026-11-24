@@ -31,6 +31,7 @@ import {
   type SyncEndpoint,
   type VersionVector,
 } from '@weave/core/protocol';
+import { computeHorizon } from './compaction.js';
 
 export interface RelayLimits {
   /** Maximum ops in one push (default 500). */
@@ -55,6 +56,8 @@ export interface RelayCoreOptions {
   readonly unsafeDisableQueue?: boolean;
   /** TEST ONLY: disable the in-transaction identity re-check (to prove the queue alone is enough). */
   readonly unsafeDisableRecheck?: boolean;
+  /** Compaction options (off by default). */
+  readonly compaction?: { enabled: boolean };
 }
 
 interface RelayState {
@@ -66,7 +69,13 @@ interface MemberEntry {
   readonly ackVector: VersionVector;
 }
 
+interface CompactionState {
+  readonly compactedThrough: VersionVector;
+  readonly removed: Readonly<Record<ReplicaId, number>>;
+}
+
 const STATE_KEY = 'meta/relay';
+const COMPACTED_KEY = 'meta/compaction';
 
 class Queue {
   private tail: Promise<void> = Promise.resolve();
@@ -85,6 +94,13 @@ async function readState(tx: StorageTx): Promise<RelayState> {
   return text === undefined ? { vector: {}, commit: 0 } : (JSON.parse(text) as RelayState);
 }
 
+async function readCompaction(tx: StorageTx): Promise<CompactionState> {
+  const text = await tx.get(COMPACTED_KEY);
+  return text === undefined
+    ? { compactedThrough: {}, removed: {} }
+    : (JSON.parse(text) as CompactionState);
+}
+
 async function readMember(tx: StorageTx, id: ReplicaId): Promise<MemberEntry | undefined> {
   const text = await tx.get(keys.peer(id));
   return text === undefined ? undefined : (JSON.parse(text) as MemberEntry);
@@ -100,9 +116,11 @@ export class RelayCore implements SyncEndpoint {
   private readonly queue = new Queue();
   private readonly limits: RelayLimits;
   private relayId: ReplicaId | undefined;
+  private readonly compactionEnabled: boolean;
 
   constructor(private readonly options: RelayCoreOptions) {
     this.limits = { ...DEFAULT_LIMITS, ...options.limits };
+    this.compactionEnabled = options.compaction?.enabled ?? false;
   }
 
   get storage(): StorageAdapter {
@@ -125,6 +143,7 @@ export class RelayCore implements SyncEndpoint {
     await this.storage.transaction('rw', async (tx) => {
       tx.put(keys.metaReplica, JSON.stringify({ replicaId: id }));
       tx.put(STATE_KEY, JSON.stringify({ vector: {}, commit: 0 }));
+      tx.put(COMPACTED_KEY, JSON.stringify({ compactedThrough: {}, removed: {} }));
     });
     this.relayId = id;
   }
@@ -150,9 +169,124 @@ export class RelayCore implements SyncEndpoint {
     });
   }
 
+  /** The horizon of compaction: for each origin, the min of member acks capped by relay vector. */
+  async horizon(): Promise<VersionVector> {
+    const [state, compaction, members] = await this.storage.transaction('ro', async (tx) => {
+      const s = await readState(tx);
+      const c = await readCompaction(tx);
+      const members = new Map<ReplicaId, VersionVector>();
+      const cursor = await tx.scan(keys.peerPrefix);
+      for (const [k, v] of cursor) {
+        const id = k.substring(keys.peerPrefix.length);
+        members.set(id, (JSON.parse(v) as MemberEntry).ackVector);
+      }
+      return [s, c, members];
+    });
+    return computeHorizon(state.vector, members, compaction.removed);
+  }
+
+  /** Current compaction state. */
+  async compactionInfo(): Promise<{
+    horizon: VersionVector;
+    compactedThrough: VersionVector;
+    removed: Record<ReplicaId, number>;
+  }> {
+    const [state, compaction, members] = await this.storage.transaction('ro', async (tx) => {
+      const s = await readState(tx);
+      const c = await readCompaction(tx);
+      const members = new Map<ReplicaId, VersionVector>();
+      const cursor = await tx.scan(keys.peerPrefix);
+      for (const [k, v] of cursor) {
+        const id = k.substring(keys.peerPrefix.length);
+        members.set(id, (JSON.parse(v) as MemberEntry).ackVector);
+      }
+      return [s, c, members];
+    });
+    const horizon = computeHorizon(state.vector, members, compaction.removed);
+    return {
+      horizon,
+      compactedThrough: compaction.compactedThrough,
+      removed: { ...compaction.removed },
+    };
+  }
+
+  /** Perform compaction: delete ops <= horizon and advance compactedThrough. */
+  async compact(): Promise<{ removedOps: number; compactedThrough: VersionVector }> {
+    if (!this.compactionEnabled) {
+      throw new WeaveError('NOT_SUPPORTED', 'Compaction is disabled');
+    }
+
+    // Through the push queue, so no push runs between reading the horizon and deleting; the commit
+    // counter rises so a push that read the state earlier retries instead of trusting stale reads.
+    return this.queue.run(() => this.compactLocked());
+  }
+
+  private async compactLocked(): Promise<{ removedOps: number; compactedThrough: VersionVector }> {
+    const result = await this.storage.transaction('rw', async (tx) => {
+      const state = await readState(tx);
+      const compaction = await readCompaction(tx);
+      const members = new Map<ReplicaId, VersionVector>();
+      const cursor = await tx.scan(keys.peerPrefix);
+      for (const [k, v] of cursor) {
+        const id = k.substring(keys.peerPrefix.length);
+        members.set(id, (JSON.parse(v) as MemberEntry).ackVector);
+      }
+
+      const horizon = computeHorizon(state.vector, members, compaction.removed);
+      let removedOps = 0;
+
+      // Scan all op keys and delete those <= horizon
+      const opCursor = await tx.scan('op/');
+      for (const [key] of opCursor) {
+        const match = key.match(/^op\/([^/]+)\/(\d+)$/);
+        if (match && match[1] && match[2]) {
+          const origin = match[1];
+          const seq = parseInt(match[2], 10);
+          const horizonSeq = horizon[origin] ?? 0;
+          if (seq <= horizonSeq) {
+            tx.delete(key);
+            removedOps++;
+          }
+        }
+      }
+
+      // Update compactedThrough
+      const newCompactedThrough: Record<string, number> = { ...compaction.compactedThrough };
+      for (const [origin, horizonSeq] of Object.entries(horizon)) {
+        const existing = newCompactedThrough[origin] ?? 0;
+        if (horizonSeq > existing) {
+          newCompactedThrough[origin] = horizonSeq;
+        }
+      }
+      const normalizedCompactedThrough = normalizeVector(newCompactedThrough);
+
+      tx.put(
+        COMPACTED_KEY,
+        JSON.stringify({
+          compactedThrough: normalizedCompactedThrough,
+          removed: compaction.removed,
+        }),
+      );
+      if (removedOps > 0)
+        tx.put(
+          STATE_KEY,
+          JSON.stringify({ ...state, commit: state.commit + 1 } satisfies RelayState),
+        );
+
+      return { removedOps, compactedThrough: normalizedCompactedThrough };
+    });
+
+    return result;
+  }
+
   async pull(request: PullRequest): Promise<PullResponse> {
     await this.register(request.replicaId); // membership before any data is returned (R3.6)
-    const vector = await this.vector();
+    const [vector, compaction] = await this.storage.transaction('ro', async (tx) => {
+      const s = await readState(tx);
+      const c = await readCompaction(tx);
+      return [s.vector, c];
+    });
+
     const selected = await selectReadablePrefix({
       senderVector: vector,
       peerVector: request.vector,
@@ -178,6 +312,23 @@ export class RelayCore implements SyncEndpoint {
           });
         }),
     });
+
+    // Check for NEEDS_SNAPSHOT: if puller is behind compactedThrough for any origin they'd receive
+    if (request.limit > 0) {
+      const wanted = request.origins === undefined ? undefined : new Set(request.origins);
+      for (const origin of Object.keys(vector)) {
+        if (wanted !== undefined && !wanted.has(origin)) continue;
+        if (vector[origin]! > (request.vector[origin] ?? 0)) {
+          const compacted = compaction.compactedThrough[origin] ?? 0;
+          if ((request.vector[origin] ?? 0) < compacted) {
+            throw new WeaveError('NEEDS_SNAPSHOT', 'History has been compacted for this origin', {
+              details: { origin, compactedThrough: compacted },
+            });
+          }
+        }
+      }
+    }
+
     return {
       endpointId: this.endpointId,
       durable: vector,
@@ -185,6 +336,11 @@ export class RelayCore implements SyncEndpoint {
       ops: selected.lines,
       blocked: selected.blocked,
       more: selected.more,
+      compaction: {
+        horizon: await this.horizon(),
+        compactedThrough: compaction.compactedThrough,
+        removed: { ...compaction.removed },
+      },
     };
   }
 
@@ -201,6 +357,7 @@ export class RelayCore implements SyncEndpoint {
       );
     }
     await this.register(request.replicaId);
+
     // Phase A1: verify every line; any failure rejects the whole push.
     const verified = [];
     for (const line of request.ops)
@@ -215,12 +372,19 @@ export class RelayCore implements SyncEndpoint {
         throw integrity(v.op.replicaId, v.op.seq);
       if (prior === undefined) byId.set(key, v);
     }
-    const { state, stored } = await this.storage.transaction('ro', async (tx) => {
+    const { state, stored, compaction } = await this.storage.transaction('ro', async (tx) => {
       const s = await readState(tx);
+      const c = await readCompaction(tx);
       const m = new Map<string, string | undefined>();
       for (const [key, v] of byId) m.set(key, await tx.get(keys.op(v.op.replicaId, v.op.seq)));
-      return { state: s, stored: m };
+      return { state: s, stored: m, compaction: c };
     });
+    // [ADV] A removed member may not push at all (R3.10).
+    if (compaction.removed[request.replicaId] !== undefined) {
+      throw new WeaveError('PEER_REMOVED', 'This peer has been removed', {
+        details: { replicaId: request.replicaId, removedAt: compaction.removed[request.replicaId] },
+      });
+    }
     for (const [key, v] of byId) {
       const line = stored.get(key);
       if (line !== undefined && readEnvelope(line).hash !== v.op.hash)
@@ -260,6 +424,17 @@ export class RelayCore implements SyncEndpoint {
     }
 
     const nextState: RelayState = { vector: normalizeVector(vector), commit: state.commit + 1 };
+
+    // [ADV] Ops a removed member wrote after its removal are refused, whoever relays them (R3.10).
+    for (const v of accepted) {
+      const removedAt = compaction.removed[v.op.replicaId];
+      if (removedAt !== undefined && v.op.seq > removedAt) {
+        throw new WeaveError('PEER_REMOVED', 'Ops from a removed peer are not allowed', {
+          details: { replicaId: v.op.replicaId, seq: v.op.seq, removedAt },
+        });
+      }
+    }
+
     await this.storage.transaction('rw', async (tx) => {
       if (this.options.unsafeDisableRecheck !== true) {
         const current = await readState(tx);
@@ -291,6 +466,26 @@ export class RelayCore implements SyncEndpoint {
         keys.peer(request.replicaId),
         JSON.stringify({ ackVector: mergeVectors(member.ackVector, request.durable) }),
       );
+    });
+  }
+
+  /** Mark a peer as removed. Idempotent: first value kept. */
+  async removePeer(id: ReplicaId): Promise<void> {
+    await this.storage.transaction('rw', async (tx) => {
+      const compaction = await readCompaction(tx);
+      const currentRelayVector = (await readState(tx)).vector;
+
+      // First value kept (idempotent)
+      if (compaction.removed[id] === undefined) {
+        const lastSeq = currentRelayVector[id] ?? 0;
+        tx.put(
+          COMPACTED_KEY,
+          JSON.stringify({
+            compactedThrough: compaction.compactedThrough,
+            removed: { ...compaction.removed, [id]: lastSeq },
+          }),
+        );
+      }
     });
   }
 }

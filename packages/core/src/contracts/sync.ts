@@ -66,6 +66,27 @@ export interface PullResponse {
   readonly blocked: readonly BlockedOrigin[];
   /** More ops are available; client should continue syncing. */
   readonly more: boolean;
+  /**
+   * [ADV] Compaction state published by a relay (R3.6 to R3.10). Absent from endpoints that do not
+   * support compaction; old clients ignore it.
+   */
+  readonly compaction?: CompactionInfo;
+}
+
+/** [ADV] Compaction state published by the relay with every pull response (R3.6 to R3.10). */
+export interface CompactionInfo {
+  /**
+   * The stable horizon: per origin, the highest `seq` that every registered member has
+   * acknowledged (members that never acknowledged count as zero), capped by the relay's vector.
+   */
+  readonly horizon: VersionVector;
+  /** Per origin, the highest `seq` the relay has discarded; older history needs a snapshot. */
+  readonly compactedThrough: VersionVector;
+  /**
+   * Members removed with `removePeer`, each with the last `seq` accepted from it. Later ops from
+   * a removed member are refused with `PEER_REMOVED`.
+   */
+  readonly removed: Readonly<Record<ReplicaId, number>>;
 }
 
 /** Request to push ops to a remote peer. */

@@ -5,10 +5,11 @@
 import { WeaveError } from '../contracts/errors.js';
 import type { JsonValue } from '../contracts/json.js';
 import type { Op } from '../contracts/op.js';
-import type { DerivedRecord, MutationRecord } from '../contracts/state.js';
+import type { ConflictRecord, DerivedRecord, MutationRecord } from '../contracts/state.js';
 import {
   keys,
   padSeq,
+  type MetaCompaction,
   type MetaSchema,
   type MetaState,
   type StorageTx,
@@ -31,6 +32,21 @@ function parse<T>(text: string | undefined, key: string): T | undefined {
 
 export async function readMetaState(tx: StorageTx): Promise<MetaState> {
   return parse<MetaState>(await tx.get(keys.metaState), keys.metaState) ?? EMPTY_STATE;
+}
+
+/** [ADV] Compaction state, or `undefined` when compaction was never used. */
+export async function readCompaction(tx: StorageTx): Promise<MetaCompaction | undefined> {
+  return parse<MetaCompaction>(await tx.get(keys.metaCompaction), keys.metaCompaction);
+}
+
+/** [ADV] Conflict history kept for a record after compaction (empty when none). */
+export async function readArchive(
+  tx: StorageTx,
+  collection: string,
+  recordId: string,
+): Promise<ConflictRecord[]> {
+  const key = keys.chist(collection, recordId);
+  return parse<ConflictRecord[]>(await tx.get(key), key) ?? [];
 }
 
 export async function readMetaSchema(tx: StorageTx): Promise<MetaSchema> {

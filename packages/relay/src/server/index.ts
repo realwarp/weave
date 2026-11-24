@@ -185,6 +185,19 @@ export function createRelayServer(options: RelayServerOptions): Server {
           res.writeHead(204);
           return res.end();
         }
+        if (route === 'POST /v1/admin/compact') {
+          const result = await options.core.compact();
+          status = 200;
+          return send(res, 200, JSON.stringify(result));
+        }
+        if (route === 'POST /v1/admin/remove-peer') {
+          const parsed = parseJson(body);
+          const replicaIdValue = replicaId(parsed['replicaId'], 'replicaId');
+          await options.core.removePeer(replicaIdValue);
+          status = 204;
+          res.writeHead(204);
+          return res.end();
+        }
         status = 404;
         return send(res, 404, JSON.stringify({ message: 'Not found' }));
       } catch (e) {
@@ -202,6 +215,15 @@ export function createRelayServer(options: RelayServerOptions): Server {
         }
         if (isWeaveError(e)) {
           const retryable = e.code === 'STORAGE_CONFLICT' || e.code === 'STORAGE_ERROR';
+          // Map NEEDS_SNAPSHOT and PEER_REMOVED to HTTP 409
+          if (e.code === 'NEEDS_SNAPSHOT' || e.code === 'PEER_REMOVED') {
+            status = 409;
+            return send(
+              res,
+              status,
+              JSON.stringify({ code: e.code, message: e.message, details: e.details }),
+            );
+          }
           status = retryable ? 503 : 400;
           return send(
             res,
