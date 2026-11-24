@@ -12,6 +12,8 @@ import type { FrontierEntry } from '../contracts/resolver.js';
 import type { CollectionDefinition } from '../contracts/schema.js';
 import type { ConflictRecord } from '../contracts/state.js';
 import { compareD4, happensBefore, isConcurrent, opIdKey, toOpId } from '../ops/order.js';
+import { WeaveError } from '../contracts/errors.js';
+import { runCustom } from '../resolvers/custom.js';
 import { getResolver } from '../resolvers/index.js';
 import { migrateFields } from '../schema/index.js';
 import { isDeleted, uncancelledDeletes } from './restore.js';
@@ -67,6 +69,12 @@ export function resolveWrites(
   const name = spec?.resolver ?? 'last-writer-wins';
   const context =
     spec?.rankMap === undefined ? {} : { rankMap: spec.rankMap as readonly JsonValue[] };
+  // [ADV] A custom field carries its own resolver; its result is checked (R6.10).
+  if (name === 'custom') {
+    if (spec?.custom === undefined)
+      throw new WeaveError('RESOLVER_ERROR', `Field "${field}" has no custom resolver`);
+    return runCustom(spec.custom, toEntries(writes), context, (v) => spec.validate(v));
+  }
   return getResolver(name)(toEntries(writes), context);
 }
 

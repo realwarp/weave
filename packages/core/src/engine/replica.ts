@@ -67,6 +67,8 @@ import {
 } from '../schema/index.js';
 import { buildOpHistory, conflictHistory, deriveRecord } from '../state/index.js';
 import { isDeleted, restoreEnabled } from '../state/restore.js';
+import { migratedSetOps } from '../state/derive.js';
+import { applyCounterDelta, mergeCounterStates } from '../resolvers/counter.js';
 import { selectReadablePrefix, isSupported } from '../sync/select.js';
 import { SNAPSHOT_FORMAT, sealSnapshot, verifySnapshotEnvelope } from '../sync/snapshot.js';
 import {
@@ -104,6 +106,33 @@ function assertRestoreAccepted(definition: AnyDefinition): void {
       { details: { collection: definition.name } },
     );
   }
+}
+
+/**
+ * [ADV] Turns the counter deltas of a local write into counter states (R6.10): the merge of every
+ * state this replica holds for the field, plus the delta on this replica's own totals. The op then
+ * causally follows every op it merged, so the field's frontier always carries the full count.
+ */
+function withCounterStates(
+  definition: AnyDefinition,
+  ops: readonly Op[],
+  replicaId: ReplicaId,
+  fields: Readonly<Record<string, JsonValue>>,
+): Readonly<Record<string, JsonValue>> {
+  const names = Object.keys(fields).filter((n) => definition.fields[n]?.kind === 'counter');
+  if (names.length === 0) return fields;
+  const migrated = migratedSetOps(ops, definition);
+  const out: Record<string, JsonValue> = { ...fields };
+  for (const name of names) {
+    const states = migrated.filter((m) => name in m.fields).map((m) => m.fields[name]!);
+    const merged = mergeCounterStates(states);
+    out[name] = applyCounterDelta(
+      merged,
+      replicaId,
+      fields[name] as number,
+    ) as unknown as JsonValue;
+  }
+  return out;
 }
 
 /**
@@ -355,7 +384,8 @@ class Engine implements Replica, SyncHost {
           recordId: id,
           kind,
           schemaVersion: definition.version,
-          fields,
+          // [ADV] Counter deltas become counter states, read in this same attempt (R6.10).
+          fields: withCounterStates(definition, pre.ops, this.replicaId, fields),
           wallTime: this.clock.nowMs(),
         });
         const record = withArchive(

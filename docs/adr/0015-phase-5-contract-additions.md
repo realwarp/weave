@@ -41,6 +41,33 @@ doc comment. Rules:
 
 | T5.3 | `CollectionDefinition.deletes?: DeleteOptions` (`policy?: 'delete-wins' \| 'update-wins'`, `restore?: boolean`); `Collection.restore(recordId, { mutationId })`; `'restore'` in `OpPayload.kind`, `OpHistoryEntry.kind` and `ChangeEvent.kind`. |
 
+| T5.4 | `ResolverName` gains `'counter'` and `'custom'`; `FieldKind` gains `'counter'`; `FieldSpec.custom?: CustomResolver`; `CustomResolver` type; `f.counter()`, `f.custom(base, resolver)`; exported `defineResolver(name, fn)` and `assertResolverDeterministic(resolver, samples, options?)` with `AssertResolverOptions`. |
+
+### Counter and custom resolvers (T5.4)
+
+- **Counter.** A counter field's op value is a counter state `{ [replicaId]: [p, n] }`: the totals
+  of that replica's positive and negative deltas, safe integers that only grow. Writes take a delta
+  (`update(id, { likes: 1 })`); the engine merges every state the replica holds for the field (the
+  larger total per replica) and adds the delta to its own totals, inside the same write attempt.
+  So every op's state covers all ops it causally follows, and the frontier carries the full
+  count. The resolver merges the frontier states and returns the sum of `p - n`. Merging is
+  commutative, associative and idempotent; totals are exact integers. Reads give the number.
+  Compaction keeps frontier ops, so the count survives it. Incoming ops must carry a well-formed
+  state (phase A2, `VALIDATION_FAILED`). A faulty writer that sends a smaller state in a later op
+  can lower the count, the same trust level as any field write.
+- **Custom.** `f.custom(base, defineResolver(name, fn))` gives one field its own resolver. There is
+  no global registry: replicas agree exactly when their collection definitions use the same code,
+  as with migrations. Every result is checked: a resolver that throws, returns a non-D7 value or a
+  value that fails the base field's type check gives `RESOLVER_ERROR` (the batch or the write is
+  rejected; nothing is stored).
+- **`assertResolverDeterministic`.** Calls the resolver directly with every order of each sample
+  (up to 6 entries) or a fixed set of seeded orders (default 200), on frozen copies, and requires
+  the same canonical result each time. It catches position dependence, hidden state, input
+  mutation and failures. It is a test helper: passing it is evidence, not proof, of purity.
+- **Widened unions.** `ResolverName` and `FieldKind` gain values. Code with an exhaustive `switch`
+  over them must add cases when it upgrades; the values only appear on fields built with the new
+  builders.
+
 ### Restore and update-wins (T5.3)
 
 - Semantics are in ADR-0006 ("Restore and update-wins") and D6. Both are pure functions of the op

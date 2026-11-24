@@ -1,8 +1,8 @@
 import type { JsonValue } from './json.js';
-import type { ResolverName } from './resolver.js';
+import type { CustomResolver, ResolverName } from './resolver.js';
 
 /** Field kinds of the schema language (design 5.1). */
-export type FieldKind = 'string' | 'number' | 'boolean' | 'json' | 'set' | 'rank';
+export type FieldKind = 'string' | 'number' | 'boolean' | 'json' | 'set' | 'rank' | 'counter';
 
 /**
  * Description of one field. `T` is a phantom type used only for inference of record types.
@@ -19,6 +19,8 @@ export interface FieldSpec<out T = unknown> {
   readonly rankMap?: readonly (string | number)[];
   /** `set` fields: the element spec. */
   readonly element?: FieldSpec;
+  /** [ADV] Fields built with `f.custom()`: the resolver used when `resolver` is `custom`. */
+  readonly custom?: CustomResolver;
   /** Runtime type check of one value of this field (D7 support is checked separately). */
   validate(value: unknown): boolean;
   /** Phantom marker; never set at runtime. */

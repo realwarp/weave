@@ -7,8 +7,10 @@ describe('public API surface (R11.4, T1.A9)', () => {
     expect(Object.keys(api).sort()).toEqual([
       'ERROR_CODES',
       'WeaveError',
+      'assertResolverDeterministic', // [ADV] 0.2.0, T5.4
       'createReplica',
       'defineCollection',
+      'defineResolver', // [ADV] 0.2.0, T5.4
       'f',
       'isWeaveError',
       'newMutationId',

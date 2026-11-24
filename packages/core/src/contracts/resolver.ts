@@ -33,5 +33,21 @@ export type Resolver<V = JsonValue> = (
   context: ResolverContext<V>,
 ) => V;
 
-/** Built-in resolver names. `counter` and custom resolvers are [ADV]. */
-export type ResolverName = 'last-writer-wins' | 'max' | 'min' | 'set-union' | 'max-rank';
+/**
+ * Resolver names. [ADV] (0.2.0): `counter` (sum of per-replica deltas, `f.counter()`) and
+ * `custom` (a field built with `f.custom()`, which carries its own `CustomResolver`).
+ */
+export type ResolverName =
+  'last-writer-wins' | 'max' | 'min' | 'set-union' | 'max-rank' | 'counter' | 'custom';
+
+/**
+ * [ADV] A named custom resolver (R6.10), made with `defineResolver`. Every replica of a
+ * collection must use the same resolver code under the same name. It must be pure and satisfy
+ * R6.6; check it with `assertResolverDeterministic` in tests.
+ */
+export interface CustomResolver<V = JsonValue> {
+  /** A stable name, `[a-z][a-z0-9-]{0,63}`; shown in errors. */
+  readonly name: string;
+  /** The resolver function. */
+  readonly resolve: Resolver<V>;
+}
