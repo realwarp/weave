@@ -42,6 +42,24 @@ function walk(dir, out = []) {
   return out;
 }
 
+/**
+ * Documented fields of the public API that apps may READ even though the name is otherwise
+ * forbidden (design 2, amended in 0.1.x): `ConflictRecord.frontier` lists the competing ops of a
+ * conflict, which notice and conflict-history views must show. Only the property-access form
+ * `x.frontier` is allowed; declaring, importing or otherwise naming `frontier` stays a violation.
+ */
+const PUBLIC_FIELD_READS = new Set(['frontier']);
+
+function isPublicFieldRead(node) {
+  const parent = node.parent;
+  return (
+    PUBLIC_FIELD_READS.has(node.text) &&
+    parent !== undefined &&
+    ts.isPropertyAccessExpression(parent) &&
+    parent.name === node
+  );
+}
+
 function analyse(file) {
   const text = fs.readFileSync(file, 'utf8');
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.ES2022, true);
@@ -64,7 +82,7 @@ function analyse(file) {
     ) {
       imports.push(node.arguments[0].text);
     }
-    if (ts.isIdentifier(node)) identifiers.push(node.text);
+    if (ts.isIdentifier(node) && !isPublicFieldRead(node)) identifiers.push(node.text);
     if (
       ts.isPropertyAccessExpression(node) &&
       ts.isIdentifier(node.expression) &&

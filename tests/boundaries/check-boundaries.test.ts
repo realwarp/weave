@@ -23,6 +23,10 @@ describe('boundary checks (T0.5)', () => {
     expect(text).toContain('forbidden sync identifier "lamport"');
     expect(text).toContain('forbidden sync identifier "sha256"');
     expect(text).toContain('forbidden sync identifier "versionVector"');
+    // Declaring `frontier` is still refused; only reading the public field is allowed.
+    expect(text).toContain(
+      'apps/demo/src/frontier.ts: app uses forbidden sync identifier "frontier"',
+    );
     expect(text).toContain('app imports an internal module: @weave/core/engine');
   });
 

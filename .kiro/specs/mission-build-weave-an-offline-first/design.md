@@ -94,7 +94,7 @@ Boundary rules (enforced by `scripts/check-boundaries.mjs` and ESLint):
 |---|---|
 | `@weave/core` imports no `node:*` module and no other package | Import scan |
 | Engine code never calls `Date.now`, `new Date`, `performance.now` or `Math.random` (A5) | ESLint `no-restricted-globals`/`no-restricted-properties`. Time and randomness come from injected `Clock` and `Random` objects. Only `wallTime` display values and retry timers use the clock. |
-| Apps import only the public entry points and contain none of the identifiers `lamport`, `context`, `sha256`, `canonical`, `versionVector`, `frontier` | Boundary script (R14a.1) |
+| Apps import only the public entry points and contain none of the identifiers `lamport`, `context`, `sha256`, `canonical`, `versionVector`, `frontier`. Amendment (0.1.x, PR #1 review): apps may **read** the documented public field `ConflictRecord.frontier` (property access `x.frontier` only), because notice and conflict-history views must show the competing ops; declaring, importing or otherwise naming `frontier` stays forbidden | Boundary script (R14a.1) |
 | The relay never imports resolver, schema or migration modules | Import scan (R4a.6) |
 
 ## 3. Data model
