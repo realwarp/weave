@@ -274,15 +274,18 @@ export async function acquireLock(env: LockEnvironment): Promise<void> {
     }
     await env.failpoint('lock:after-revalidate');
 
-    // Step 6: replace the stale lock, then remove the guard LAST.
-    await rename(lockPath, path.join(env.dir, `LOCK.stale-${recoveryNonce}`));
-    await env.failpoint('lock:after-rename');
-    if (!(await createExclusive(lockPath, JSON.stringify(record)))) {
+    // Step 6: write the new lock beside the stale one, then rename it over LOCK in one step, so
+    // LOCK never goes missing. (Moving the stale LOCK aside first left a gap in which an ordinary
+    // opener could create LOCK, see our guard and back out, while we found its LOCK and backed
+    // out too: no owner at all.) Remove the guard LAST.
+    const pending = path.join(env.dir, `LOCK.new-${recoveryNonce}`);
+    if (!(await createExclusive(pending, JSON.stringify(record)))) {
       await removeIfOwned(guardPath, 'recoveryNonce', recoveryNonce);
-      throw locked('Another process created LOCK during recovery');
+      throw locked('A pending lock file of this recovery already exists');
     }
     await env.failpoint('lock:after-new-lock');
-    await unlink(path.join(env.dir, `LOCK.stale-${recoveryNonce}`)).catch(() => undefined);
+    await rename(pending, lockPath);
+    await env.failpoint('lock:after-rename');
     await unlink(guardPath);
     return;
   }

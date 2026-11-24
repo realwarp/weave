@@ -24,7 +24,8 @@ Files you may see:
 | ------------------ | ----------------------------------------------------------------------- |
 | `LOCK`             | The current holder: `pid`, host identity, a nonce                       |
 | `LOCK.recovery`    | A recovery guard: someone is recovering this directory                  |
-| `LOCK.stale-*`     | A lock moved aside during an automatic takeover that did not finish      |
+| `LOCK.stale-*`     | A lock moved aside by an unfinished takeover in WEAVE 0.1.0             |
+| `LOCK.new-*`       | A new lock written during an automatic takeover that did not finish     |
 | `MANIFEST`, `snap-*`, `journal-*` | Your data. **Never edit or delete these.**              |
 
 ## Stale lock: the six steps
@@ -65,7 +66,7 @@ Copy-Item -Recurse relay-data "relay-data.backup-$(Get-Date -Format yyyyMMddHHmm
 ### 4. Inspect
 
 List the directory and note the exact contents of `LOCK`, whether `LOCK.recovery` exists, and
-which `LOCK.stale-*` files exist.
+which `LOCK.stale-*` and `LOCK.new-*` files exist.
 
 ### 5. Hold the guard, then remove the stale files and `LOCK`
 
@@ -83,7 +84,8 @@ which `LOCK.stale-*` files exist.
   If creation fails, someone else is recovering: stop.
 - Read `LOCK` again. If it differs from what you noted in step 4, a process took the directory
   meanwhile: remove only the guard you created and stop.
-- Delete every `LOCK.stale-*` file, then delete `LOCK`. Keep `LOCK.recovery` while you do this.
+- Delete every `LOCK.stale-*` and `LOCK.new-*` file, then delete `LOCK`. Keep `LOCK.recovery`
+  while you do this.
 
 ### 6. Remove the guard last, then reopen and validate
 
