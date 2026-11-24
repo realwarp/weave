@@ -49,6 +49,30 @@ doc comment. Rules:
 
 | T5.7 | `CreateReplicaOptions.ban?: BanOptions` (`enabled`, `threshold?`, `windowMs?`, `banMs?`); `ReplicaStatus.bans?: BanStatus[]` (`peer`, `remainingMs`); optional `SyncHost.assertPeerAllowed?()` and `notePeerInvalid?()`; error code `PEER_BANNED` (added in T5.1) now used. |
 
+| T5.8 | New entry points `@weave/transport/websocket` (`websocketTransport(options)`, browser and Node) and `@weave/transport/websocket/server` (`serveWebSocket(options)`, Node only). No change to any existing type. |
+
+### WebSocket transport and direct network sync (T5.8)
+
+- **Same protocol.** Each `SyncEndpoint` call is one JSON text message `{id, method, params}`
+  answered by `{id, result}` or `{id, error: {code, message, retryable?}}`. Op lines travel as JSON
+  strings, byte for byte. Several requests may be in flight on one connection.
+- **Client.** Uses the platform `WebSocket` (Node 22, browsers): no dependency, no Node import.
+  One reused connection, opened on first use. A failed handshake, a lost connection and a timeout
+  are retryable `TRANSPORT_ERROR`s; the next call reconnects. Endpoint errors keep their code.
+- **Server.** `serveWebSocket({ endpoint })` serves any endpoint, usually `replica.endpoint()`,
+  so two replicas sync directly over the network. RFC 6455 is implemented on `node:http` upgrade
+  (masked text frames only, fragmentation, ping/pong, close codes 1002/1003/1007/1008/1009,
+  `maxMessageBytes` default 16 MiB). Every request is checked field by field before the endpoint
+  sees it. It binds 127.0.0.1 by default.
+- **Secrets and identity.** A secret travels as the subprotocol entry `weave.bearer.<base64url>`
+  (browsers cannot set WebSocket headers; Node clients may also send `Authorization`); it is
+  never echoed or logged. A shared `token` only opens the endpoint, with no identity, as on the
+  relay. `authenticate(secret)` maps a secret to an `AuthContext`, and `endpoint(auth)` binds it,
+  for example `(auth) => replica.endpoint({ auth })`; `authenticate` with a plain endpoint is
+  refused at startup so an identity can never be dropped silently.
+- **Limits.** No TLS: put `wss://` termination in front across networks. The relay keeps its
+  HTTP API; it has no WebSocket route in 0.2.0.
+
 ### Peer ban (T5.7)
 
 - **Off by default.** `createReplica({ ban: { enabled: true } })`; defaults 3 strikes within
