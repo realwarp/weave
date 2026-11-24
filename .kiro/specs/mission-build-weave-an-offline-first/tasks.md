@@ -551,7 +551,7 @@ Each task is its own gate with an independent review. **The order of requirement
   - Done when: the WebSocket adapter passes the transport conformance suite; two replicas sync directly over the network with the same protocol and reach a verified `complete`.
   - Review: independent reviewer agent (Testing and QA); report `docs/reviews/T5.8.md`; the task merges only after the report records no open findings.
 
-- [ ] **T5.9 [ADV] GHOSTLINE "me too" counter**
+- [x] **T5.9 [ADV] GHOSTLINE "me too" counter**
   - Owner: GHOSTLINE.
   - Paths: `apps/ghostline/src/model.ts`, `apps/ghostline/src/logic.ts`, `apps/ghostline/src/app.ts`, `apps/ghostline/test/counter*.test.ts`.
   - Depends: T5.4, T5.8. Req: R13.7.
