@@ -544,7 +544,7 @@ Each task is its own gate with an independent review. **The order of requirement
   - Done when: a peer that repeatedly sends invalid data is refused for a configurable period using the monotonic timer; valid peers are unaffected; tests use the fake scheduler.
   - Review: independent reviewer agent (Testing and QA); report `docs/reviews/T5.7.md`; the task merges only after the report records no open findings.
 
-- [ ] **T5.8 [ADV] WebSocket transport and direct network sync**
+- [x] **T5.8 [ADV] WebSocket transport and direct network sync**
   - Owner: Synchronization.
   - Paths: `packages/transport/src/websocket/**`, `packages/transport/test/websocket/**`.
   - Depends: Gate 4, T5.7. Req: R4.4, R9.5.
