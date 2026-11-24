@@ -487,7 +487,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 Each task is its own gate with an independent review. **The order of requirements section 3 is mandatory and is encoded in the Depends fields: T5.1 -> T5.2 -> T5.3 -> T5.4 -> T5.5 -> T5.6 -> T5.7 -> T5.8 -> T5.9.** (T5.9 also depends on T5.4 directly.) Every task below ends with a `Review:` line: an independent reviewer agent (Testing and QA) reads the actual code, runs the tests, and writes `docs/reviews/<task id>.md`; the task is not merged until that report records no open findings. Testing and QA owns `docs/reviews/**`.
 
-- [ ] **T5.1 [ADV] Compaction and `removePeer`**
+- [x] **T5.1 [ADV] Compaction and `removePeer`**
   - Owner (non-overlapping parts):
     - Synchronization: `packages/core/src/sync/compaction.ts` and `packages/core/test/sync/compaction*.test.ts`.
     - Relay: `packages/relay/src/core/compaction.ts` and `packages/relay/test/compaction/**` (relay-side horizon and `NEEDS_SNAPSHOT`).
