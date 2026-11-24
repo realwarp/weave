@@ -142,6 +142,11 @@ export interface HeldStatus {
   readonly ops: number;
   /** Per collection, the highest schema version a held op needs. */
   readonly needs: Readonly<Record<string, number>>;
+  /**
+   * Held ops that became readable after an upgrade but failed schema validation. They stay
+   * stored and never enter state; their writer was faulty. Absent when zero.
+   */
+  readonly invalid?: number;
 }
 
 /**

@@ -70,7 +70,9 @@ import { isDeleted, restoreEnabled } from '../state/restore.js';
 import {
   type HeldEntry,
   heldKey,
+  heldOpIsValid,
   isReadable,
+  keyOfMarker,
   readHeld,
   readableOps,
   summarizeHeld,
@@ -115,8 +117,9 @@ async function deriveReadable(
   definition: AnyDefinition,
   collection: string,
   recordId: string,
+  invalid: ReadonlySet<string> = new Set(),
 ): Promise<DerivedRecord | undefined> {
-  const readable = readableOps(ops, definition);
+  const readable = readableOps(ops, definition, invalid);
   if (readable.length === 0) return undefined;
   return deriveRecord(readable, definition, collection, recordId);
 }
@@ -208,6 +211,7 @@ class Engine implements Replica, SyncHost {
     scheduler: Scheduler,
     private readonly compactionOptions: CompactionOptions | undefined = undefined,
     private readonly hold: boolean = false,
+    private readonly invalid: ReadonlySet<string> = new Set(),
   ) {
     this.id = replicaId;
     this.replicaId = replicaId;
@@ -384,11 +388,17 @@ class Engine implements Replica, SyncHost {
           return { recordId: pre.mutation.recordId, opId: pre.mutation.opId, replayed: true };
         }
         // [ADV] Held newer-schema ops do not count for this code (R8.7); without them, all ops.
-        const readable = readableOps(pre.ops, definition);
+        const readable = readableOps(pre.ops, definition, this.invalid);
         if (readable.length < pre.ops.length) {
           // A write here would causally follow changes this code cannot see and could silently
           // supersede them (mixed-version writing is out of scope, R8.7): update the app first.
           const needed = Math.max(...pre.ops.map((o) => o.schemaVersion));
+          if (needed <= definition.version)
+            throw new WeaveError(
+              'VALIDATION_FAILED',
+              `Record "${recordId}" has held changes that failed validation after an upgrade`,
+              { details: { collection, recordId } },
+            );
           throw new WeaveError(
             'SCHEMA_TOO_NEW',
             `Record "${recordId}" has changes from schema version ${needed}; update the app first`,
@@ -859,7 +869,13 @@ class Engine implements Replica, SyncHost {
           ...(existing.get(k)?.ops ?? []),
           ...accepted.filter((a) => `${a.op.collection}/${a.op.recordId}` === k).map((a) => a.op),
         ];
-        const record = await deriveReadable(ops, definition, t.collection, t.recordId);
+        const record = await deriveReadable(
+          ops,
+          definition,
+          t.collection,
+          t.recordId,
+          this.invalid,
+        );
         if (record !== undefined)
           records.set(k, withArchive(record, existing.get(k)?.archive ?? []));
       }
@@ -1089,7 +1105,13 @@ class Engine implements Replica, SyncHost {
     this.alive();
     await this.mutex.run(async () => {
       const groups = await this.storage.transaction('ro', (tx) => listRecords(tx));
-      await rewriteRecords(this.storage, [...this.definitions.values()], groups, undefined);
+      await rewriteRecords(
+        this.storage,
+        [...this.definitions.values()],
+        groups,
+        undefined,
+        this.invalid,
+      );
     });
   }
 
@@ -1333,7 +1355,7 @@ class Engine implements Replica, SyncHost {
         const definition = this.definition(r.collection);
         // [ADV] A record with held newer-schema ops keeps every op: this code cannot tell
         // which of them will matter after the upgrade (R8.7).
-        if (readableOps(r.ops, definition).length < r.ops.length) continue;
+        if (readableOps(r.ops, definition, this.invalid).length < r.ops.length) continue;
         // [ADV] With restore or update-wins a deleted record can become live again, and which
         // deletes count depends on concurrent sets, so its ops all stay (ADR-0015, T5.3).
         const keepTombstones =
@@ -1429,6 +1451,7 @@ async function rewriteRecords(
   definitions: readonly AnyDefinition[],
   groups: Map<string, Set<string>>,
   extra: ((tx: StorageTx) => void) | undefined,
+  invalid: ReadonlySet<string> = new Set(),
 ): Promise<void> {
   const byName = new Map(definitions.map((d) => [d.name, d]));
   const loaded = await storage.transaction('ro', async (tx) => {
@@ -1452,7 +1475,13 @@ async function rewriteRecords(
   });
   const derived: Array<{ key: string; value: string }> = [];
   for (const { collection, recordId, ops, archive } of loaded) {
-    const record = await deriveReadable(ops, byName.get(collection)!, collection, recordId);
+    const record = await deriveReadable(
+      ops,
+      byName.get(collection)!,
+      collection,
+      recordId,
+      invalid,
+    );
     if (record === undefined) continue; // only held ops (R8.7): no record yet
     derived.push({
       key: keys.rec(collection, recordId),
@@ -1515,6 +1544,34 @@ export async function createReplica(options: CreateReplicaOptions): Promise<Repl
       tx.put(keys.metaSchema, JSON.stringify(nextSchema));
     };
 
+    // [ADV] Held ops (R8.7). Those this code can now read are validated with the phase A2 rules
+    // before they enter state; an op that fails stays excluded for good (marker `invalid`).
+    const byName = new Map(definitions.map((d) => [d.name, d]));
+    const markers = await storage.transaction('ro', async (tx) => {
+      const out: Array<{ key: string; entry: HeldEntry; line: string | undefined }> = [];
+      for (const h of await readHeld(tx)) {
+        const [origin, seq] = keyOfMarker(h.key).split(':') as [string, string];
+        out.push({ ...h, line: await tx.get(keys.op(origin, Number(seq))) });
+      }
+      return out;
+    });
+    const invalid = new Set<string>();
+    const nowValid: string[] = [];
+    const nowInvalid: Array<{ key: string; entry: HeldEntry }> = [];
+    for (const m of markers) {
+      if (m.entry.invalid === true) {
+        invalid.add(keyOfMarker(m.key));
+        continue;
+      }
+      if (!isReadable(m.entry, byName) || m.line === undefined) continue;
+      const op = await verifyOpLine(m.line);
+      if (heldOpIsValid(op, byName.get(op.collection)!)) nowValid.push(m.key);
+      else {
+        invalid.add(keyOfMarker(m.key));
+        nowInvalid.push({ key: m.key, entry: { ...m.entry, invalid: true } });
+      }
+    }
+
     if (upgrades.length > 0) {
       const groups = await storage.transaction('ro', async (tx) => {
         const all = new Map<string, Set<string>>();
@@ -1522,12 +1579,21 @@ export async function createReplica(options: CreateReplicaOptions): Promise<Repl
           for (const [c, ids] of await listRecords(tx, name)) all.set(c, ids);
         return all;
       });
-      // One transaction: rebuilt records, new schema versions, and a cleared pending buffer (3.5).
+      // One transaction: rebuilt records, new schema versions, a cleared pending buffer (3.5)
+      // and the updated held markers.
       const pend = await storage.transaction('ro', (tx) => tx.scan(keys.pendPrefix()));
-      await rewriteRecords(storage, definitions, groups, (tx) => {
-        writeMeta(tx);
-        for (const [key] of pend) tx.delete(key);
-      });
+      await rewriteRecords(
+        storage,
+        definitions,
+        groups,
+        (tx) => {
+          writeMeta(tx);
+          for (const [key] of pend) tx.delete(key);
+          for (const key of nowValid) tx.delete(key);
+          for (const m of nowInvalid) tx.put(m.key, JSON.stringify(m.entry));
+        },
+        invalid,
+      );
     } else if (meta.replica === undefined || meta.state === undefined || schemaChanged) {
       const pend = schemaChanged
         ? await storage.transaction('ro', (tx) => tx.scan(keys.pendPrefix()))
@@ -1537,17 +1603,6 @@ export async function createReplica(options: CreateReplicaOptions): Promise<Repl
         for (const [key] of pend) tx.delete(key);
       });
     }
-
-    // [ADV] Held markers of ops this code can now read are dropped (R8.7). The records were
-    // re-derived above; a marker left by a crash here is ignored by status() and retried.
-    const byName = new Map(definitions.map((d) => [d.name, d]));
-    const readableHeld = (await storage.transaction('ro', (tx) => readHeld(tx))).filter((h) =>
-      isReadable(h.entry, byName),
-    );
-    if (readableHeld.length > 0)
-      await storage.transaction('rw', async (tx) => {
-        for (const h of readableHeld) tx.delete(h.key);
-      });
 
     const engine = new Engine(
       storage,
@@ -1559,6 +1614,7 @@ export async function createReplica(options: CreateReplicaOptions): Promise<Repl
       options.scheduler ?? systemScheduler,
       options.compaction,
       options.holdNewerSchema === true,
+      invalid,
     );
     await engine.sweepPending();
     await engine.repairNotifications();

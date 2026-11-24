@@ -145,6 +145,50 @@ describe('holding (R8.7)', () => {
     expect(await upgraded.hashes()).toEqual(await writer.hashes());
   });
 
+  it('the upgrade validates held ops; one that fails stays out of state and is reported', async () => {
+    // A faulty newer writer: its "v2" types `zone` as a number; the real v2 says string.
+    const faultyV2 = defineCollection({
+      name: 'notes',
+      version: 2,
+      fields: { title: f.string({ required: true }), site: f.string(), zone: f.number() },
+      migrations: { 1: ({ fields }) => ({ ...fields }) },
+    });
+    const old = (await open([notesV1])).r;
+    const { recordId } = await old
+      .collection(notesV1)
+      .create({ title: 'base' }, { mutationId: mid() });
+    const faulty = (await open([faultyV2])).r;
+    expect((await faulty.sync(old.endpoint())).status).toBe('complete');
+    await faulty.collection(faultyV2).update(recordId, { zone: 7 }, { mutationId: mid() });
+    const { recordId: good } = await faulty
+      .collection(faultyV2)
+      .create({ title: 'fine', site: 's' }, { mutationId: mid() });
+
+    const { r: holder, backing } = await open([notesV1], { hold: true, seed: 'inv-1' });
+    expect((await holder.sync(faulty.endpoint())).status).toBe('complete');
+    expect((await holder.status()).held).toEqual({ ops: 2, needs: { notes: 2 } });
+    await holder.close();
+
+    const upgraded = (await open([notesV2], { backing, hold: true, seed: 'inv-2' })).r;
+    expect((await upgraded.status()).held).toEqual({ ops: 0, needs: {}, invalid: 1 });
+    // The invalid op is not in state; the valid held op is.
+    expect((await upgraded.collection(notesV2).get(recordId))?.value).toEqual({ title: 'base' });
+    expect((await upgraded.collection(notesV2).get(good))?.value).toEqual({
+      title: 'fine',
+      site: 's',
+    });
+    await expect(
+      upgraded.collection(notesV2).update(recordId, { title: 'x' }, { mutationId: mid() }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    // It stays excluded across a rebuild and a restart.
+    await upgraded.rebuild();
+    expect((await upgraded.collection(notesV2).get(recordId))?.value).toEqual({ title: 'base' });
+    await upgraded.close();
+    const again = (await open([notesV2], { backing, hold: true, seed: 'inv-3' })).r;
+    expect((await again.status()).held).toEqual({ ops: 0, needs: {}, invalid: 1 });
+    expect((await again.collection(notesV2).get(recordId))?.value).toEqual({ title: 'base' });
+  });
+
   it('an upgrade to v2 without the new collection keeps only that collection held', async () => {
     const { writer } = await newerWriter();
     const { r: holder, backing } = await open([notesV1], { hold: true, seed: 'part-1' });

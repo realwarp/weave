@@ -59,9 +59,14 @@ doc comment. Rules:
 - **Peers send everything.** A holding replica's endpoint reports `support: '*'`, and its pulls
   carry `hold: true`, which the relay and replica endpoints honour. Old endpoints ignore the flag
   and apply the prefix rule (the sync is then `partial`, as in 0.1.0).
-- **Upgrade.** On open, records of upgraded collections and of newly defined collections are
-  re-derived from all their ops, and markers of now-readable ops are removed. The upgraded
-  replica then has the same state and op-set hashes as a replica that never held anything.
+- **Upgrade.** On open, every held op the new code can read is first validated with the phase A2
+  rules (field types after migration; restore only where enabled). Then, in one transaction,
+  records of upgraded and newly defined collections are re-derived, markers of valid ops are
+  removed, and an op that fails validation keeps its marker with `invalid: true`. Invalid ops
+  stay stored but never enter state (across rebuilds and restarts), writes to their records fail
+  with `VALIDATION_FAILED`, and `status().held.invalid` counts them: their writer was faulty, and
+  a replica that received them directly would have rejected them. With valid held ops only, the
+  upgraded replica has the same state and op-set hashes as one that never held anything.
 - **Local writes.** A write to a record that has held ops fails with `SCHEMA_TOO_NEW`: it would
   causally follow changes this code cannot see and could supersede them unseen (for example lose
   a counter's held deltas). Mixed-version writing stays out of scope (R8.7).
