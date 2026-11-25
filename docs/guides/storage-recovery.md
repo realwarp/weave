@@ -18,6 +18,14 @@ same PID namespace, which needs Linux with a readable `/proc`. On Windows and ma
 without that proof) the open fails with `STORAGE_LOCKED`, the data files stay untouched, and a
 person must follow the procedure below. There is deliberately no "break the lock" option.
 
+An automatic takeover can also stop with `STORAGE_LOCKED` when another program has `LOCK` open at
+the moment WEAVE replaces it (Windows refuses to replace an open file). Check the error's
+`details`:
+
+- `retryable: true`: WEAVE put the directory back as it was. Open again later; no manual step.
+- `retryable: false`: cleanup did not finish, so `LOCK.recovery` (and often a `LOCK.new-*` file)
+  stays and every open is refused. Follow the six steps below.
+
 Files you may see:
 
 | File               | Meaning                                                                 |
@@ -25,7 +33,7 @@ Files you may see:
 | `LOCK`             | The current holder: `pid`, host identity, a nonce                       |
 | `LOCK.recovery`    | A recovery guard: someone is recovering this directory                  |
 | `LOCK.stale-*`     | A lock moved aside by an unfinished takeover in WEAVE 0.1.0             |
-| `LOCK.new-*`       | A new lock written during an automatic takeover that did not finish     |
+| `LOCK.new-*`       | A new lock from a takeover that was killed or could not clean up        |
 | `MANIFEST`, `snap-*`, `journal-*` | Your data. **Never edit or delete these.**              |
 
 ## Stale lock: the six steps

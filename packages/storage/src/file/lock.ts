@@ -213,6 +213,51 @@ function provablyDead(observed: LockRecord, own: HostId, env: LockEnvironment): 
 }
 
 /**
+ * Rename errors that mean "LOCK is in use right now" (Windows refuses to replace a file that
+ * another handle has open; design 9.1 step 6). The takeover is abandoned, not retried.
+ */
+const BLOCKED_RENAME = new Set(['EPERM', 'EACCES', 'EBUSY']);
+
+/**
+ * Undoes a takeover whose final rename was refused, while still holding the guard. The stale
+ * LOCK is never touched. The guard is released only when the pending file is gone and LOCK is
+ * still the observed stale lock, so the directory is exactly as it was before the takeover.
+ * Otherwise the guard stays and the directory needs the manual recovery procedure.
+ * @returns The STORAGE_LOCKED error to throw.
+ */
+async function backOutBlockedRename(
+  lockPath: string,
+  guardPath: string,
+  pending: string,
+  observedNonce: string,
+  guard: GuardRecord,
+  cause: string,
+): Promise<WeaveError> {
+  const details = { cause, pendingFile: path.basename(pending) };
+  try {
+    await unlink(pending);
+    const current = await readJson<Partial<LockRecord>>(lockPath);
+    const held = await readJson<Partial<GuardRecord>>(guardPath);
+    if (current?.nonce === observedNonce && held?.recoveryNonce === guard.recoveryNonce) {
+      await unlink(guardPath);
+      return locked(
+        'Another process has LOCK open, so the stale lock was not replaced; try again',
+        {
+          ...details,
+          retryable: true,
+        },
+      );
+    }
+  } catch {
+    // fall through: cleanup is not provably complete
+  }
+  return locked(
+    'The stale lock could not be replaced and cleanup did not finish; manual recovery is needed',
+    { ...details, retryable: false, guardLeft: GUARD_FILE },
+  );
+}
+
+/**
  * Acquires the directory lock following the guarded open procedure of design 9.1.
  * @param env - Environment with directory, identity, and failpoint hooks.
  * @throws STORAGE_LOCKED if the lock cannot be acquired or proven stale.
@@ -284,7 +329,13 @@ export async function acquireLock(env: LockEnvironment): Promise<void> {
       throw locked('A pending lock file of this recovery already exists');
     }
     await env.failpoint('lock:after-new-lock');
-    await rename(pending, lockPath);
+    try {
+      await rename(pending, lockPath);
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException | undefined)?.code;
+      if (code === undefined || !BLOCKED_RENAME.has(code)) throw e;
+      throw await backOutBlockedRename(lockPath, guardPath, pending, observed.nonce, guard, code);
+    }
     await env.failpoint('lock:after-rename');
     await unlink(guardPath);
     return;
