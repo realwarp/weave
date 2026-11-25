@@ -213,24 +213,47 @@ function provablyDead(observed: LockRecord, own: HostId, env: LockEnvironment): 
 }
 
 /**
- * Rename errors that mean "LOCK is in use right now" (Windows refuses to replace a file that
- * another handle has open; design 9.1 step 6). The takeover is abandoned, not retried.
+ * Why the step-6 rename of `LOCK.new-*` over `LOCK` failed (design 9.1 step 6):
+ * - `in-use`: Windows refused to replace a file that another handle has open (EPERM, EACCES or
+ *   EBUSY on win32). Transient: the same open can succeed once the other handle closes.
+ * - `permission`: POSIX `rename(2)` is not refused by open handles, so EPERM or EACCES there
+ *   means this process may not replace LOCK (for example a sticky directory and a LOCK owned by
+ *   another user). Permanent until the permissions change.
+ * - `unexpected`: anything else (for example EROFS or EIO). The state is not understood.
  */
-const BLOCKED_RENAME = new Set(['EPERM', 'EACCES', 'EBUSY']);
+export type RenameFailure = 'in-use' | 'permission' | 'unexpected';
 
 /**
- * Undoes a takeover whose final rename was refused, while still holding the guard. The stale
- * LOCK is never touched. The guard is released only when the pending file is gone and LOCK is
- * still the observed stale lock, so the directory is exactly as it was before the takeover.
- * Otherwise the guard stays and the directory needs the manual recovery procedure.
- * @returns The STORAGE_LOCKED error to throw.
+ * Classifies a step-6 rename error.
+ * @param code - The errno code of the rename error.
+ * @param platform - The platform the rename ran on.
+ * @returns The failure class.
  */
-async function backOutBlockedRename(
+export function classifyRenameFailure(
+  code: string | undefined,
+  platform: NodeJS.Platform,
+): RenameFailure {
+  if (platform === 'win32') {
+    return code === 'EPERM' || code === 'EACCES' || code === 'EBUSY' ? 'in-use' : 'unexpected';
+  }
+  return code === 'EPERM' || code === 'EACCES' ? 'permission' : 'unexpected';
+}
+
+/**
+ * Undoes a takeover whose final rename was refused (`in-use` or `permission`), while still
+ * holding the guard. The stale LOCK is never touched. The guard is released only when the pending
+ * file is gone, LOCK is still the observed stale lock and the guard is still ours, so the
+ * directory is exactly as it was before the takeover. Otherwise the guard stays (fail closed) and
+ * the directory needs the manual recovery procedure.
+ * @returns The error to throw.
+ */
+async function backOutRefusedRename(
   lockPath: string,
   guardPath: string,
   pending: string,
   observedNonce: string,
   guard: GuardRecord,
+  kind: 'in-use' | 'permission',
   cause: string,
 ): Promise<WeaveError> {
   const details = { cause, pendingFile: path.basename(pending) };
@@ -240,20 +263,24 @@ async function backOutBlockedRename(
     const held = await readJson<Partial<GuardRecord>>(guardPath);
     if (current?.nonce === observedNonce && held?.recoveryNonce === guard.recoveryNonce) {
       await unlink(guardPath);
-      return locked(
-        'Another process has LOCK open, so the stale lock was not replaced; try again',
-        {
-          ...details,
-          retryable: true,
-        },
-      );
+      return kind === 'in-use'
+        ? locked('Another process has LOCK open, so the stale lock was not replaced; try again', {
+            ...details,
+            reason: 'lock-in-use',
+            retryable: true,
+          })
+        : locked(
+            'This process is not permitted to replace the stale LOCK; the directory is unchanged. ' +
+              'Open it as a user allowed to replace LOCK, or follow the manual recovery guide',
+            { ...details, reason: 'permission-denied', retryable: false },
+          );
     }
   } catch {
     // fall through: cleanup is not provably complete
   }
   return locked(
     'The stale lock could not be replaced and cleanup did not finish; manual recovery is needed',
-    { ...details, retryable: false, guardLeft: GUARD_FILE },
+    { ...details, reason: 'cleanup-incomplete', retryable: false, guardLeft: GUARD_FILE },
   );
 }
 
@@ -333,8 +360,35 @@ export async function acquireLock(env: LockEnvironment): Promise<void> {
       await rename(pending, lockPath);
     } catch (e) {
       const code = (e as NodeJS.ErrnoException | undefined)?.code;
-      if (code === undefined || !BLOCKED_RENAME.has(code)) throw e;
-      throw await backOutBlockedRename(lockPath, guardPath, pending, observed.nonce, guard, code);
+      const kind = classifyRenameFailure(code, process.platform);
+      if (kind === 'unexpected') {
+        // State not understood: touch nothing, keep the guard (fail closed).
+        throw new WeaveError(
+          'STORAGE_ERROR',
+          'Replacing the stale LOCK failed; LOCK.recovery is kept and every open is refused ' +
+            'until the manual recovery procedure is followed',
+          {
+            cause: e,
+            details: {
+              cause: code ?? 'unknown',
+              pendingFile: path.basename(pending),
+              reason: 'rename-failed',
+              retryable: false,
+              guardLeft: GUARD_FILE,
+              guide: 'docs/guides/storage-recovery.md',
+            },
+          },
+        );
+      }
+      throw await backOutRefusedRename(
+        lockPath,
+        guardPath,
+        pending,
+        observed.nonce,
+        guard,
+        kind,
+        code ?? 'unknown',
+      );
     }
     await env.failpoint('lock:after-rename');
     await unlink(guardPath);

@@ -18,13 +18,27 @@ same PID namespace, which needs Linux with a readable `/proc`. On Windows and ma
 without that proof) the open fails with `STORAGE_LOCKED`, the data files stay untouched, and a
 person must follow the procedure below. There is deliberately no "break the lock" option.
 
-An automatic takeover can also stop with `STORAGE_LOCKED` when another program has `LOCK` open at
-the moment WEAVE replaces it (Windows refuses to replace an open file). Check the error's
-`details`:
+With the default identity, Windows and macOS never take a lock over by themselves, so on those
+systems the cases below do not arise: a dead holder's lock always needs the six steps.
 
-- `retryable: true`: WEAVE put the directory back as it was. Open again later; no manual step.
-- `retryable: false`: cleanup did not finish, so `LOCK.recovery` (and often a `LOCK.new-*` file)
-  stays and every open is refused. Follow the six steps below.
+Where automatic takeover runs (Linux with `/proc`), its last step replaces `LOCK` with a new file.
+If that step fails, the open fails and the error's `details` say what happened:
+
+| `details.reason`     | Error            | What is on disk                         | What to do                       |
+| -------------------- | ---------------- | --------------------------------------- | -------------------------------- |
+| `lock-in-use`        | `STORAGE_LOCKED` | unchanged (old `LOCK` only)             | Open again later (`retryable`)   |
+| `permission-denied`  | `STORAGE_LOCKED` | unchanged (old `LOCK` only)             | Open as a user allowed to replace `LOCK`, or use the six steps |
+| `cleanup-incomplete` | `STORAGE_LOCKED` | old `LOCK`, `LOCK.recovery`, often `LOCK.new-*` | The six steps below        |
+| `rename-failed`      | `STORAGE_ERROR`  | old `LOCK`, `LOCK.new-*`, `LOCK.recovery` | Fix the cause, then the six steps |
+
+`details.cause` is the system error code. `lock-in-use` (Windows refusing to replace a file that
+another program has open) is seen only in WEAVE's own tests, which inject a reliable identity.
+`permission-denied` means this user may not replace `LOCK`, for example in a shared directory with
+the sticky bit where `LOCK` belongs to another user; trying again as the same user fails the same
+way. `rename-failed` covers any other error, for example `EROFS` (the filesystem is read-only): the
+old `LOCK` survives, `LOCK.new-*` and `LOCK.recovery` stay, and every later open fails with
+`STORAGE_LOCKED` because the guard is present. Make the filesystem writable first, then follow the
+six steps; they remove `LOCK.new-*` and `LOCK` while keeping the guard, and the guard last.
 
 Files you may see:
 
