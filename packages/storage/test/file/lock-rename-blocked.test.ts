@@ -6,7 +6,7 @@
  * until the manual recovery procedure runs.
  */
 import type * as FsPromises from 'node:fs/promises';
-import { open, readdir, readFile } from 'node:fs/promises';
+import { open, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GUARD_FILE, LOCK_FILE, fileStorage } from '../../src/file/index.js';
@@ -21,8 +21,11 @@ import {
 } from './helpers.js';
 import { runRecoveryProcedure } from './recovery-procedure.js';
 
-/** Test controls: make the step-6 rename, or the pending-file cleanup, fail once. */
-const faults: { rename?: string; unlinkPending?: string } = {};
+/**
+ * Test controls: make the step-6 rename, or the pending-file cleanup, fail once. `beforeFail`
+ * runs just before the injected rename error, to change the directory under the recoverer.
+ */
+const faults: { rename?: string; unlinkPending?: string; beforeFail?: () => Promise<void> } = {};
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const real = await importOriginal<typeof FsPromises>();
@@ -34,6 +37,9 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     if (faults.rename !== undefined && isPending(from)) {
       const code = faults.rename;
       delete faults.rename;
+      const before = faults.beforeFail;
+      delete faults.beforeFail;
+      await before?.();
       throw errno(code);
     }
     return real.rename(from, to);
@@ -71,6 +77,7 @@ describe('file locking: refused step-6 rename (design 9.1)', () => {
   afterEach(async () => {
     delete faults.rename;
     delete faults.unlinkPending;
+    delete faults.beforeFail;
     await removeDir(dir);
     await removeDir(backup);
   });
@@ -121,6 +128,33 @@ describe('file locking: refused step-6 rename (design 9.1)', () => {
       await expectBackedOut();
     });
   }
+
+  it('if LOCK is no longer the stale lock after a refused rename, the guard stays', async () => {
+    const foreign = JSON.stringify({ ...JSON.parse(staleLock), nonce: 'someone-else' });
+    faults.rename = 'EPERM';
+    faults.beforeFail = () => writeFile(path.join(dir, LOCK_FILE), foreign);
+    const details = await expectCode(
+      fileStorage(options(dir, procs, procs.spawn())).open(),
+      'STORAGE_LOCKED',
+    );
+    expect(details).toMatchObject({ cause: 'EPERM', retryable: false });
+    expect(await lockFiles()).toEqual([LOCK_FILE, GUARD_FILE]);
+    expect(await readFile(path.join(dir, LOCK_FILE), 'utf8')).toBe(foreign);
+    await expectCode(fileStorage(options(dir, procs, procs.spawn())).open(), 'STORAGE_LOCKED');
+  });
+
+  it('if the guard is no longer ours after a refused rename, it is not removed', async () => {
+    const other = JSON.stringify({ recoveryNonce: 'other', observedLockNonce: 'x', pid: 1 });
+    faults.rename = 'EPERM';
+    faults.beforeFail = () => writeFile(path.join(dir, GUARD_FILE), other);
+    const details = await expectCode(
+      fileStorage(options(dir, procs, procs.spawn())).open(),
+      'STORAGE_LOCKED',
+    );
+    expect(details).toMatchObject({ cause: 'EPERM', retryable: false });
+    expect(await readFile(path.join(dir, GUARD_FILE), 'utf8')).toBe(other);
+    expect(await readFile(path.join(dir, LOCK_FILE), 'utf8')).toBe(staleLock);
+  });
 
   it('an unexpected rename error is not swallowed and leaves the guard (fail closed)', async () => {
     faults.rename = 'EIO';
