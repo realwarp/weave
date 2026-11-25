@@ -214,14 +214,22 @@ function provablyDead(observed: LockRecord, own: HostId, env: LockEnvironment): 
 
 /**
  * Why the step-6 rename of `LOCK.new-*` over `LOCK` failed (design 9.1 step 6):
- * - `in-use`: Windows refused to replace a file that another handle has open (EPERM, EACCES or
- *   EBUSY on win32). Transient: the same open can succeed once the other handle closes.
- * - `permission`: POSIX `rename(2)` is not refused by open handles, so EPERM or EACCES there
- *   means this process may not replace LOCK (for example a sticky directory and a LOCK owned by
- *   another user). Permanent until the permissions change.
+ * - `blocked`: Windows refused the rename (EPERM, EACCES or EBUSY on win32). Windows uses these
+ *   codes both for a file that another handle has open and for a denied ACL, so the cause cannot
+ *   be told apart; an open handle is the usual, transient case.
+ * - `not-permitted`: POSIX `rename(2)` is not refused by open handles, so EPERM or EACCES there
+ *   means the rename is not permitted (for example a sticky directory and a LOCK owned by another
+ *   user, or a filesystem that does not support the rename). Permanent until an operator acts.
  * - `unexpected`: anything else (for example EROFS or EIO). The state is not understood.
  */
-export type RenameFailure = 'in-use' | 'permission' | 'unexpected';
+export type RenameFailure = 'blocked' | 'not-permitted' | 'unexpected';
+
+/**
+ * What a caller can do after a failed lock takeover (`details.retryDisposition`). This is not
+ * the top-level `WeaveError.retryable`, which is reserved for transport errors (R10.2).
+ */
+export type RetryDisposition =
+  'may-retry' | 'operator-action-required' | 'manual-recovery-required';
 
 /**
  * Classifies a step-6 rename error.
@@ -234,13 +242,13 @@ export function classifyRenameFailure(
   platform: NodeJS.Platform,
 ): RenameFailure {
   if (platform === 'win32') {
-    return code === 'EPERM' || code === 'EACCES' || code === 'EBUSY' ? 'in-use' : 'unexpected';
+    return code === 'EPERM' || code === 'EACCES' || code === 'EBUSY' ? 'blocked' : 'unexpected';
   }
-  return code === 'EPERM' || code === 'EACCES' ? 'permission' : 'unexpected';
+  return code === 'EPERM' || code === 'EACCES' ? 'not-permitted' : 'unexpected';
 }
 
 /**
- * Undoes a takeover whose final rename was refused (`in-use` or `permission`), while still
+ * Undoes a takeover whose final rename was refused (`blocked` or `not-permitted`), while still
  * holding the guard. The stale LOCK is never touched. The guard is released only when the pending
  * file is gone, LOCK is still the observed stale lock and the guard is still ours, so the
  * directory is exactly as it was before the takeover. Otherwise the guard stays (fail closed) and
@@ -253,7 +261,7 @@ async function backOutRefusedRename(
   pending: string,
   observedNonce: string,
   guard: GuardRecord,
-  kind: 'in-use' | 'permission',
+  kind: 'blocked' | 'not-permitted',
   cause: string,
 ): Promise<WeaveError> {
   const details = { cause, pendingFile: path.basename(pending) };
@@ -263,31 +271,45 @@ async function backOutRefusedRename(
     const held = await readJson<Partial<GuardRecord>>(guardPath);
     if (current?.nonce === observedNonce && held?.recoveryNonce === guard.recoveryNonce) {
       await unlink(guardPath);
-      return kind === 'in-use'
-        ? locked('Another process has LOCK open, so the stale lock was not replaced; try again', {
+      if (kind === 'blocked') {
+        const retryDisposition: RetryDisposition = 'may-retry';
+        return locked(
+          'Replacing the stale LOCK was refused (usually another process has it open); the ' +
+            'directory is unchanged; try again',
+          { ...details, reason: 'rename-blocked', retryDisposition },
+        );
+      }
+      const retryDisposition: RetryDisposition = 'operator-action-required';
+      return new WeaveError(
+        'STORAGE_ERROR',
+        'Replacing the stale LOCK is not permitted; the directory is unchanged. Open it as a ' +
+          'user allowed to replace LOCK, or follow the manual recovery guide',
+        {
+          details: {
             ...details,
-            reason: 'lock-in-use',
-            retryable: true,
-          })
-        : locked(
-            'This process is not permitted to replace the stale LOCK; the directory is unchanged. ' +
-              'Open it as a user allowed to replace LOCK, or follow the manual recovery guide',
-            { ...details, reason: 'permission-denied', retryable: false },
-          );
+            reason: 'rename-not-permitted',
+            retryDisposition,
+            guide: 'docs/guides/storage-recovery.md',
+          },
+        },
+      );
     }
   } catch {
     // fall through: cleanup is not provably complete
   }
+  const retryDisposition: RetryDisposition = 'manual-recovery-required';
   return locked(
     'The stale lock could not be replaced and cleanup did not finish; manual recovery is needed',
-    { ...details, reason: 'cleanup-incomplete', retryable: false, guardLeft: GUARD_FILE },
+    { ...details, reason: 'cleanup-incomplete', retryDisposition, guardLeft: GUARD_FILE },
   );
 }
 
 /**
  * Acquires the directory lock following the guarded open procedure of design 9.1.
  * @param env - Environment with directory, identity, and failpoint hooks.
- * @throws STORAGE_LOCKED if the lock cannot be acquired or proven stale.
+ * @throws STORAGE_LOCKED if the lock cannot be acquired or proven stale, or a takeover's
+ *   replacement was blocked; STORAGE_ERROR if the replacement is not permitted or failed
+ *   unexpectedly (design 9.1 step 6, `details.reason` and `details.retryDisposition`).
  */
 export async function acquireLock(env: LockEnvironment): Promise<void> {
   const lockPath = path.join(env.dir, LOCK_FILE);
@@ -338,7 +360,9 @@ export async function acquireLock(env: LockEnvironment): Promise<void> {
     const again = await readJson<Partial<LockRecord>>(lockPath);
     if (again === undefined || !validLock(again) || again.nonce !== observed.nonce) {
       await removeIfOwned(guardPath, 'recoveryNonce', recoveryNonce);
-      continue; // someone else changed the lock: restart (a live owner will refuse us)
+      // LOCK changed since the observation (its new holder may be alive or may have died too):
+      // never replace it under a guard that names the old observation. Restart from step 1.
+      continue;
     }
     if (!provablyDead(again, own, env)) {
       await removeIfOwned(guardPath, 'recoveryNonce', recoveryNonce);
@@ -373,7 +397,7 @@ export async function acquireLock(env: LockEnvironment): Promise<void> {
               cause: code ?? 'unknown',
               pendingFile: path.basename(pending),
               reason: 'rename-failed',
-              retryable: false,
+              retryDisposition: 'manual-recovery-required' satisfies RetryDisposition,
               guardLeft: GUARD_FILE,
               guide: 'docs/guides/storage-recovery.md',
             },

@@ -24,18 +24,20 @@ systems the cases below do not arise: a dead holder's lock always needs the six 
 Where automatic takeover runs (Linux with `/proc`), its last step replaces `LOCK` with a new file.
 If that step fails, the open fails and the error's `details` say what happened:
 
-| `details.reason`     | Error            | What is on disk                         | What to do                       |
-| -------------------- | ---------------- | --------------------------------------- | -------------------------------- |
-| `lock-in-use`        | `STORAGE_LOCKED` | unchanged (old `LOCK` only)             | Open again later (`retryable`)   |
-| `permission-denied`  | `STORAGE_LOCKED` | unchanged (old `LOCK` only)             | Open as a user allowed to replace `LOCK`, or use the six steps |
-| `cleanup-incomplete` | `STORAGE_LOCKED` | old `LOCK`, `LOCK.recovery`, often `LOCK.new-*` | The six steps below        |
-| `rename-failed`      | `STORAGE_ERROR`  | old `LOCK`, `LOCK.new-*`, `LOCK.recovery` | Fix the cause, then the six steps |
+| `details.reason`       | Error            | `details.retryDisposition`  | What is on disk                                 | What to do                         |
+| ---------------------- | ---------------- | --------------------------- | ----------------------------------------------- | ---------------------------------- |
+| `rename-blocked`       | `STORAGE_LOCKED` | `may-retry`                 | unchanged (old `LOCK` only)                     | Open again later                   |
+| `rename-not-permitted` | `STORAGE_ERROR`  | `operator-action-required`  | unchanged (old `LOCK` only)                     | Open as a user allowed to replace `LOCK`, or use the six steps |
+| `cleanup-incomplete`   | `STORAGE_LOCKED` | `manual-recovery-required`  | old `LOCK`, `LOCK.recovery`, often `LOCK.new-*` | The six steps below                |
+| `rename-failed`        | `STORAGE_ERROR`  | `manual-recovery-required`  | old `LOCK`, `LOCK.new-*`, `LOCK.recovery`       | Fix the cause, then the six steps  |
 
-`details.cause` is the system error code. `lock-in-use` (Windows refusing to replace a file that
-another program has open) is seen only in WEAVE's own tests, which inject a reliable identity.
-`permission-denied` means this user may not replace `LOCK`, for example in a shared directory with
-the sticky bit where `LOCK` belongs to another user; trying again as the same user fails the same
-way. `rename-failed` covers any other error, for example `EROFS` (the filesystem is read-only): the
+`details.cause` is the system error code. `rename-blocked` (Windows refusing to replace a file
+that another program has open, or a denied permission, which Windows reports the same way) is seen
+only in WEAVE's own tests, which inject a reliable identity. `rename-not-permitted` means the
+rename is not allowed, for example in a shared directory with the sticky bit where `LOCK` belongs
+to another user; trying again as the same user fails the same way. After `rename-blocked` or
+`rename-not-permitted` the directory is as it was, so another program may take the lock over in
+the meantime. `rename-failed` covers any other error, for example `EROFS` (the filesystem is read-only): the
 old `LOCK` survives, `LOCK.new-*` and `LOCK.recovery` stay, and every later open fails with
 `STORAGE_LOCKED` because the guard is present. Make the filesystem writable first, then follow the
 six steps; they remove `LOCK.new-*` and `LOCK` while keeping the guard, and the guard last.

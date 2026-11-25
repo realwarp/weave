@@ -162,4 +162,116 @@ describe('file locking: forced interleavings (design 9.1)', () => {
     await r.transaction('rw', async (tx) => tx.put('data/2', 'two'));
     await r.close();
   });
+
+  for (const point of ['lock:after-new-lock', 'lock:after-rename'] as const) {
+    it(`step 5/6: a recoverer killed at ${point} leaves a guard naming the lock it observed`, async () => {
+      const first = procs.spawn();
+      const holder = fileStorage(options(dir, procs, first));
+      await holder.open();
+      await holder.transaction('rw', async (tx) => tx.put('data/1', 'one'));
+      procs.kill(first);
+      const staleBytes = await readFile(path.join(dir, LOCK_FILE), 'utf8');
+      const observedNonce = (JSON.parse(staleBytes) as { nonce: string }).nonce;
+      const data = await dataFingerprint(dir);
+
+      // The recoverer dies at the failpoint (no cleanup code runs after it).
+      const recoverer = procs.spawn();
+      await expect(
+        fileStorage(
+          options(dir, procs, recoverer, {
+            failpoint: (name) => {
+              if (name === point) throw new Error('killed');
+            },
+          }),
+        ).open(),
+      ).rejects.toThrow('killed');
+      procs.kill(recoverer);
+
+      const guard = JSON.parse(await readFile(path.join(dir, GUARD_FILE), 'utf8')) as {
+        observedLockNonce: unknown;
+        pid: unknown;
+      };
+      expect(guard.observedLockNonce).toBe(observedNonce);
+      expect(guard.pid).toBe(recoverer);
+      const files = await lockFiles();
+      const lockNow = await readFile(path.join(dir, LOCK_FILE), 'utf8');
+      if (point === 'lock:after-new-lock') {
+        // Before replacement: the observed lock is still in place, the new one is pending.
+        expect(files).toHaveLength(3);
+        expect(files[0]).toBe(LOCK_FILE);
+        expect(files[1]).toMatch(/^LOCK\.new-/);
+        expect(files[2]).toBe(GUARD_FILE);
+        expect(lockNow).toBe(staleBytes);
+      } else {
+        // After replacement: the recoverer's lock replaced exactly the observed one.
+        expect(files).toEqual([LOCK_FILE, GUARD_FILE]);
+        expect((JSON.parse(lockNow) as { pid: unknown }).pid).toBe(recoverer);
+      }
+      expect(files.some((n) => n.startsWith('LOCK.stale-'))).toBe(false);
+      for (let i = 0; i < 3; i++)
+        await expectCode(fileStorage(options(dir, procs, procs.spawn())).open(), 'STORAGE_LOCKED');
+      expect(await dataFingerprint(dir)).toEqual(data);
+
+      const outcome = await runRecoveryProcedure(dir, { isAlive: procs.probe, backupDir: backup });
+      expect(outcome.status).toBe('recovered');
+      expect(await lockFiles()).toEqual([]);
+      expect(await readAll(options(dir, procs, procs.spawn()))).toEqual([['data/1', 'one']]);
+    });
+  }
+
+  it('step 5: a holder dead at observation but alive at revalidation is not taken over', async () => {
+    const first = procs.spawn();
+    const holder = fileStorage(options(dir, procs, first));
+    await holder.open();
+    await holder.transaction('rw', async (tx) => tx.put('data/1', 'one'));
+    const staleBytes = await readFile(path.join(dir, LOCK_FILE), 'utf8');
+    const data = await dataFingerprint(dir);
+
+    // Liveness: `dead` when the lock is first observed, `alive` once the guard is held.
+    let revived = false;
+    const isAlive = (pid: number) =>
+      pid === first ? (revived ? 'alive' : 'dead') : procs.probe(pid);
+    const r = fileStorage(
+      options(dir, procs, procs.spawn(), {
+        isAlive,
+        failpoint: async (name) => {
+          if (name === 'lock:after-guard-create') revived = true;
+        },
+      }),
+    );
+    const details = await expectCode(r.open(), 'STORAGE_LOCKED');
+    expect(details).toBeDefined();
+    expect(revived).toBe(true); // the guard was taken, so the refusal came from revalidation
+    expect(await lockFiles()).toEqual([LOCK_FILE]); // own guard removed, nothing else written
+    expect(await readFile(path.join(dir, LOCK_FILE), 'utf8')).toBe(staleBytes);
+    expect(await dataFingerprint(dir)).toEqual(data);
+    await holder.transaction('rw', async (tx) => tx.put('data/2', 'two')); // still the owner
+    await holder.close();
+  });
+
+  it('step 5: a refusal at revalidation removes only its own guard', async () => {
+    const first = procs.spawn();
+    const holder = fileStorage(options(dir, procs, first));
+    await holder.open();
+    const staleBytes = await readFile(path.join(dir, LOCK_FILE), 'utf8');
+    const foreignGuard = JSON.stringify({ recoveryNonce: 'someone-else', observedLockNonce: 'x' });
+    let revived = false;
+    const isAlive = (pid: number) =>
+      pid === first ? (revived ? 'alive' : 'dead') : procs.probe(pid);
+    const r = fileStorage(
+      options(dir, procs, procs.spawn(), {
+        isAlive,
+        failpoint: async (name) => {
+          if (name === 'lock:after-guard-create') {
+            revived = true;
+            await writeFile(path.join(dir, GUARD_FILE), foreignGuard); // guard no longer ours
+          }
+        },
+      }),
+    );
+    await expectCode(r.open(), 'STORAGE_LOCKED');
+    expect(await readFile(path.join(dir, GUARD_FILE), 'utf8')).toBe(foreignGuard);
+    expect(await readFile(path.join(dir, LOCK_FILE), 'utf8')).toBe(staleBytes);
+    await holder.close();
+  });
 });
