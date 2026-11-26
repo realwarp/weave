@@ -46,10 +46,17 @@ const stop = () => {
   if (stopping) return;
   stopping = true;
   vite.kill();
-  if (process.platform === 'win32') relay.send('shutdown');
+  // The relay may already have exited (for example STORAGE_LOCKED at startup): only signal a
+  // running relay, so a closed IPC channel never hides the relay's own error.
+  if (relay.exitCode !== null || relay.signalCode !== null) return;
+  if (process.platform === 'win32' && relay.connected) relay.send('shutdown');
   else relay.kill('SIGTERM');
 };
+relay.on('error', (e) => console.error(`relay: ${e.message}`));
 process.on('SIGINT', stop);
 process.on('SIGTERM', stop);
-relay.once('exit', stop);
+relay.once('exit', (code) => {
+  stop();
+  if (code) process.exitCode = code;
+});
 vite.once('exit', stop);
