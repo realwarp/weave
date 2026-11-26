@@ -3,108 +3,1218 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <meta
+      name="description"
+      content="GHOSTLINE: community coordination that keeps working offline."
+    />
     <title>GHOSTLINE</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%230d1117'/%3E%3Cpath d='M9 25V14a7 7 0 0 1 14 0v11l-3.5-2.5L16 25l-3.5-2.5Z' fill='%2363e6be'/%3E%3Ccircle cx='13.2' cy='14.5' r='1.6' fill='%230d1117'/%3E%3Ccircle cx='18.8' cy='14.5' r='1.6' fill='%230d1117'/%3E%3C/svg%3E"
+    />
     <style>
+      /* ------------------------------------------------------------ design tokens */
       :root {
-        font-family: system-ui, sans-serif;
-        color-scheme: light dark;
+        color-scheme: dark;
+        --bg: #07090d;
+        --bg-glow-1: rgba(99, 230, 190, 0.1);
+        --bg-glow-2: rgba(139, 124, 255, 0.1);
+        --surface: #0e131b;
+        --surface-2: #141b26;
+        --surface-3: #1b2432;
+        --line: rgba(148, 163, 184, 0.14);
+        --line-strong: rgba(148, 163, 184, 0.28);
+        --text: #e8eef6;
+        --text-2: #a5b1c2;
+        --text-3: #6f7c8f;
+        --accent: #63e6be;
+        --accent-strong: #3fd5a7;
+        --accent-ink: #04140f;
+        --accent-soft: rgba(99, 230, 190, 0.12);
+        --violet: #a89bff;
+        --violet-soft: rgba(168, 155, 255, 0.14);
+        --amber: #f7c66b;
+        --amber-soft: rgba(247, 198, 107, 0.14);
+        --rose: #ff8a9a;
+        --rose-soft: rgba(255, 138, 154, 0.13);
+        --sky: #7cc4ff;
+        --sky-soft: rgba(124, 196, 255, 0.13);
+        --shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 18px 40px -24px rgba(0, 0, 0, 0.8);
+        --radius-lg: 18px;
+        --radius: 12px;
+        --radius-sm: 8px;
+        --font:
+          'Inter', 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, Roboto,
+          'Helvetica Neue', Arial, sans-serif;
+        --mono:
+          'JetBrains Mono', 'Cascadia Code', ui-monospace, SFMono-Regular, Menlo, Consolas,
+          monospace;
+        --focus: 0 0 0 3px rgba(99, 230, 190, 0.45);
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          color-scheme: light;
+          --bg: #f4f6f9;
+          --bg-glow-1: rgba(16, 185, 129, 0.1);
+          --bg-glow-2: rgba(124, 58, 237, 0.08);
+          --surface: #ffffff;
+          --surface-2: #f6f8fb;
+          --surface-3: #edf1f6;
+          --line: rgba(15, 23, 42, 0.09);
+          --line-strong: rgba(15, 23, 42, 0.18);
+          --text: #0f172a;
+          --text-2: #475569;
+          --text-3: #7a8699;
+          --accent: #0f9f77;
+          --accent-strong: #0b8a67;
+          --accent-ink: #ffffff;
+          --accent-soft: rgba(15, 159, 119, 0.1);
+          --violet: #6d5ae6;
+          --violet-soft: rgba(109, 90, 230, 0.1);
+          --amber: #b7791f;
+          --amber-soft: rgba(183, 121, 31, 0.12);
+          --rose: #d6455d;
+          --rose-soft: rgba(214, 69, 93, 0.1);
+          --sky: #2b7bd0;
+          --sky-soft: rgba(43, 123, 208, 0.1);
+          --shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 12px 32px -20px rgba(15, 23, 42, 0.25);
+          --focus: 0 0 0 3px rgba(15, 159, 119, 0.35);
+        }
+      }
+
+      /* ------------------------------------------------------------ base */
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html {
+        -webkit-text-size-adjust: 100%;
       }
       body {
-        margin: 0 auto;
-        max-width: 980px;
-        padding: 1rem;
+        margin: 0;
+        min-height: 100vh;
+        font-family: var(--font);
+        font-size: 15px;
+        line-height: 1.5;
+        color: var(--text);
+        background:
+          radial-gradient(900px 520px at 8% -10%, var(--bg-glow-1), transparent 70%),
+          radial-gradient(800px 480px at 100% 0%, var(--bg-glow-2), transparent 70%), var(--bg);
+        background-attachment: fixed;
+        -webkit-font-smoothing: antialiased;
       }
-      header {
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+      button,
+      input,
+      textarea {
+        font: inherit;
+        color: inherit;
+      }
+      :focus-visible {
+        outline: none;
+        box-shadow: var(--focus);
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+        border: 0;
+      }
+      .skip {
+        position: absolute;
+        left: 12px;
+        top: -48px;
+        z-index: 50;
+        padding: 8px 14px;
+        border-radius: var(--radius-sm);
+        background: var(--accent);
+        color: var(--accent-ink);
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .skip:focus {
+        top: 12px;
+      }
+      svg.icon {
+        width: 18px;
+        height: 18px;
+        flex: none;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      /* ------------------------------------------------------------ top bar */
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        border-bottom: 1px solid var(--line);
+        background: color-mix(in srgb, var(--bg) 78%, transparent);
+        backdrop-filter: saturate(160%) blur(14px);
+        -webkit-backdrop-filter: saturate(160%) blur(14px);
+      }
+      .topbar-inner {
+        max-width: 1240px;
+        margin: 0 auto;
+        padding: 12px 24px;
         display: flex;
-        gap: 1rem;
         align-items: center;
+        gap: 16px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+      }
+      .brand-mark {
+        width: 38px;
+        height: 38px;
+        border-radius: 11px;
+        display: grid;
+        place-items: center;
+        background: linear-gradient(145deg, var(--accent) 0%, var(--violet) 130%);
+        box-shadow: 0 8px 22px -10px var(--accent);
+        flex: none;
+      }
+      .brand-mark svg {
+        width: 24px;
+        height: 24px;
+      }
+      .brand h1 {
+        font-size: 17px;
+        font-weight: 800;
+        letter-spacing: 0.22em;
+      }
+      .brand p {
+        font-size: 12px;
+        color: var(--text-3);
+        letter-spacing: 0.01em;
+        white-space: nowrap;
+      }
+      .topbar-spacer {
+        flex: 1;
+      }
+      .device-chip {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 5px 12px 5px 5px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--surface);
+        min-width: 0;
+      }
+      .device-chip .label {
+        font-size: 11px;
+        color: var(--text-3);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        line-height: 1.1;
+      }
+      #device {
+        display: block;
+        font-weight: 650;
+        font-size: 13.5px;
+        line-height: 1.2;
+        max-width: 160px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .avatar {
+        --hue: 160;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        flex: none;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        color: hsl(var(--hue) 70% 12%);
+        background: linear-gradient(
+          145deg,
+          hsl(var(--hue) 75% 72%),
+          hsl(calc(var(--hue) + 40) 70% 62%)
+        );
+      }
+      .avatar.sm {
+        width: 22px;
+        height: 22px;
+        font-size: 10px;
+      }
+
+      /* sync status */
+      .sync-area {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .sync-pill {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        font-size: 13px;
+        color: var(--text-2);
+        max-width: 360px;
+        min-width: 0;
+      }
+      .sync-pill .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex: none;
+        background: var(--text-3);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-3) 22%, transparent);
+      }
+      #status {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .sync-pill[data-state='ready'] .dot {
+        background: var(--sky);
+        box-shadow: 0 0 0 3px var(--sky-soft);
+      }
+      .sync-pill[data-state='syncing'] .dot {
+        background: var(--violet);
+        box-shadow: 0 0 0 3px var(--violet-soft);
+        animation: pulse 1s ease-in-out infinite;
+      }
+      .sync-pill[data-state='synced'] {
+        color: var(--text);
+      }
+      .sync-pill[data-state='synced'] .dot {
+        background: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-soft);
+      }
+      .sync-pill[data-state='partial'] .dot {
+        background: var(--amber);
+        box-shadow: 0 0 0 3px var(--amber-soft);
+      }
+      .sync-pill[data-state='error'] {
+        border-color: color-mix(in srgb, var(--rose) 45%, transparent);
+        color: var(--rose);
+      }
+      .sync-pill[data-state='error'] .dot {
+        background: var(--rose);
+        box-shadow: 0 0 0 3px var(--rose-soft);
+      }
+      .net {
+        font-size: 12px;
+        color: var(--text-3);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+      }
+      .net[data-online='false'] {
+        color: var(--amber);
+      }
+      @keyframes pulse {
+        50% {
+          opacity: 0.35;
+        }
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* ------------------------------------------------------------ buttons */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        min-height: 36px;
+        padding: 0 14px;
+        border-radius: 10px;
+        border: 1px solid var(--line-strong);
+        background: var(--surface-2);
+        color: var(--text);
+        font-size: 13.5px;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+        transition:
+          background 0.15s,
+          border-color 0.15s,
+          transform 0.08s,
+          color 0.15s;
+      }
+      .btn:hover {
+        background: var(--surface-3);
+        border-color: var(--line-strong);
+      }
+      .btn:active {
+        transform: translateY(1px);
+      }
+      .btn:disabled {
+        opacity: 0.55;
+        cursor: progress;
+      }
+      .btn svg.icon {
+        width: 16px;
+        height: 16px;
+      }
+      .btn.primary {
+        background: var(--accent);
+        border-color: transparent;
+        color: var(--accent-ink);
+      }
+      .btn.primary:hover {
+        background: var(--accent-strong);
+      }
+      .btn.ghost {
+        background: transparent;
+        border-color: transparent;
+        color: var(--text-2);
+      }
+      .btn.ghost:hover {
+        background: var(--surface-3);
+        color: var(--text);
+      }
+      .btn.danger:hover {
+        color: var(--rose);
+        background: var(--rose-soft);
+      }
+      .btn.success {
+        color: var(--accent);
+        background: var(--accent-soft);
+        border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+      }
+      .btn.success:hover {
+        background: color-mix(in srgb, var(--accent) 22%, transparent);
+      }
+      .btn.metoo {
+        color: var(--violet);
+        background: var(--violet-soft);
+        border-color: color-mix(in srgb, var(--violet) 30%, transparent);
+      }
+      .btn.metoo:hover {
+        background: color-mix(in srgb, var(--violet) 24%, transparent);
+      }
+      .btn.sm {
+        min-height: 30px;
+        padding: 0 10px;
+        font-size: 12.5px;
+        border-radius: 8px;
+      }
+      #sync {
+        min-height: 38px;
+        padding: 0 18px;
+      }
+      #sync[aria-busy='true'] svg.icon {
+        animation: spin 0.9s linear infinite;
+      }
+
+      /* ------------------------------------------------------------ layout */
+      .page {
+        max-width: 1240px;
+        margin: 0 auto;
+        padding: 28px 24px 64px;
+      }
+      .hero {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 24px;
+        flex-wrap: wrap;
+        margin-bottom: 24px;
+      }
+      .hero h2 {
+        font-size: clamp(24px, 3.2vw, 34px);
+        font-weight: 750;
+        letter-spacing: -0.02em;
+        line-height: 1.15;
+      }
+      .hero h2 em {
+        font-style: normal;
+        background: linear-gradient(90deg, var(--accent), var(--violet));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      .hero p {
+        margin-top: 6px;
+        color: var(--text-2);
+        max-width: 560px;
+      }
+      .stats {
+        display: flex;
+        gap: 10px;
         flex-wrap: wrap;
       }
-      h1 {
-        margin: 0;
-        letter-spacing: 0.1em;
+      .stat {
+        min-width: 118px;
+        padding: 12px 16px;
+        border-radius: var(--radius);
+        background: var(--surface);
+        border: 1px solid var(--line);
+        box-shadow: var(--shadow);
       }
-      main {
+      .stat b {
+        display: block;
+        font-size: 22px;
+        font-weight: 750;
+        letter-spacing: -0.02em;
+        line-height: 1.1;
+        font-variant-numeric: tabular-nums;
+      }
+      .stat span {
+        font-size: 12px;
+        color: var(--text-3);
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+        gap: 22px;
+        align-items: start;
+      }
+      .panel {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+      .panel.notices-panel {
+        grid-column: 1 / -1;
+      }
+      .panel-head {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 18px 20px 14px;
+      }
+      .panel-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
+        flex: none;
+      }
+      .panel-icon.req {
+        color: var(--accent);
+        background: var(--accent-soft);
+      }
+      .panel-icon.ann {
+        color: var(--violet);
+        background: var(--violet-soft);
+      }
+      .panel-icon.not {
+        color: var(--amber);
+        background: var(--amber-soft);
+      }
+      .panel-head h2 {
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+      .panel-head p {
+        font-size: 12.5px;
+        color: var(--text-3);
+      }
+      .count {
+        margin-left: auto;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--text-2);
+        background: var(--surface-3);
+        border-radius: 999px;
+        padding: 3px 10px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* ------------------------------------------------------------ forms */
+      .composer {
+        margin: 0 20px 16px;
+        padding: 14px;
+        border-radius: var(--radius);
+        background: var(--surface-2);
+        border: 1px solid var(--line);
+        display: grid;
+        gap: 10px;
+      }
+      .field {
+        display: grid;
+        gap: 5px;
+      }
+      .field > span {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-2);
+      }
+      .field > span .opt {
+        font-weight: 400;
+        color: var(--text-3);
+      }
+      .row {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 1.5rem;
+        gap: 10px;
       }
-      @media (max-width: 760px) {
-        main {
+      input[type='text'],
+      textarea {
+        width: 100%;
+        padding: 9px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--line-strong);
+        background: var(--surface);
+        color: var(--text);
+        transition:
+          border-color 0.15s,
+          box-shadow 0.15s;
+      }
+      input::placeholder,
+      textarea::placeholder {
+        color: var(--text-3);
+      }
+      input:hover,
+      textarea:hover {
+        border-color: color-mix(in srgb, var(--accent) 35%, var(--line-strong));
+      }
+      input:focus-visible,
+      textarea:focus-visible {
+        border-color: var(--accent);
+      }
+      textarea {
+        resize: vertical;
+        min-height: 72px;
+      }
+      [aria-invalid='true'] {
+        border-color: var(--rose) !important;
+        box-shadow: 0 0 0 3px var(--rose-soft) !important;
+      }
+      .field-error {
+        font-size: 12px;
+        color: var(--rose);
+        min-height: 0;
+      }
+      .field-error:empty {
+        display: none;
+      }
+      .composer-foot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .hint {
+        font-size: 12px;
+        color: var(--text-3);
+      }
+      .form-note {
+        font-size: 12.5px;
+        color: var(--accent);
+      }
+      .form-note:empty {
+        display: none;
+      }
+
+      /* ------------------------------------------------------------ cards */
+      .list {
+        list-style: none;
+        margin: 0;
+        padding: 0 12px 12px;
+        display: grid;
+        gap: 10px;
+      }
+      .card {
+        position: relative;
+        padding: 14px 16px 14px 18px;
+        border-radius: var(--radius);
+        background: var(--surface-2);
+        border: 1px solid var(--line);
+        transition:
+          border-color 0.15s,
+          background 0.15s;
+      }
+      .card::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 14px;
+        bottom: 14px;
+        width: 3px;
+        border-radius: 0 3px 3px 0;
+        background: var(--text-3);
+        opacity: 0.6;
+      }
+      .card:hover {
+        border-color: var(--line-strong);
+      }
+      .card[data-tone='open']::before {
+        background: var(--accent);
+        opacity: 1;
+      }
+      .card[data-tone='claimed']::before {
+        background: var(--sky);
+        opacity: 1;
+      }
+      .card[data-tone='done'] {
+        background: transparent;
+      }
+      .card[data-tone='done'] .card-title {
+        color: var(--text-2);
+      }
+      .card[data-tone='draft']::before {
+        background: var(--amber);
+        opacity: 1;
+      }
+      .card[data-tone='published']::before {
+        background: var(--violet);
+        opacity: 1;
+      }
+      .card-top {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      .card-title {
+        font-size: 15.5px;
+        font-weight: 680;
+        letter-spacing: -0.01em;
+        line-height: 1.35;
+        overflow-wrap: anywhere;
+        flex: 1;
+        min-width: 0;
+      }
+      .card-body {
+        margin-top: 4px;
+        color: var(--text-2);
+        font-size: 14px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .card-body.muted {
+        color: var(--text-3);
+        font-style: italic;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        flex: none;
+        padding: 2px 9px;
+        border-radius: 999px;
+        font-size: 11.5px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        white-space: nowrap;
+      }
+      .pill::before {
+        content: '';
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+      .pill.open {
+        color: var(--accent);
+        background: var(--accent-soft);
+      }
+      .pill.claimed {
+        color: var(--sky);
+        background: var(--sky-soft);
+      }
+      .pill.done {
+        color: var(--text-2);
+        background: var(--surface-3);
+      }
+      .pill.draft {
+        color: var(--amber);
+        background: var(--amber-soft);
+      }
+      .pill.published {
+        color: var(--violet);
+        background: var(--violet-soft);
+      }
+      .tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 10px;
+      }
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 9px;
+        border-radius: 7px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-2);
+        background: var(--surface-3);
+        border: 1px solid var(--line);
+      }
+      .tag::before {
+        content: '#';
+        color: var(--text-3);
+        margin-right: 1px;
+      }
+      .byline {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 10px;
+        font-size: 12.5px;
+        color: var(--text-3);
+      }
+      .meta {
+        font-size: 12.5px;
+        color: var(--text-3);
+        overflow-wrap: anywhere;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px dashed var(--line);
+      }
+      .actions .push {
+        margin-left: auto;
+      }
+      .mine {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--sky);
+        padding: 0 4px;
+      }
+      .inline-editor {
+        display: flex;
+        gap: 6px;
+        margin-top: 10px;
+        flex-wrap: wrap;
+      }
+      .inline-editor input,
+      .inline-editor textarea {
+        flex: 1 1 200px;
+      }
+      .inline-editor textarea {
+        min-height: 64px;
+      }
+
+      /* empty states */
+      .empty {
+        margin: 0 12px 12px;
+        padding: 26px 18px;
+        border-radius: var(--radius);
+        border: 1px dashed var(--line-strong);
+        text-align: center;
+        color: var(--text-3);
+      }
+      .empty svg.icon {
+        width: 26px;
+        height: 26px;
+        margin-bottom: 6px;
+        color: var(--text-3);
+        opacity: 0.8;
+      }
+      .empty strong {
+        display: block;
+        color: var(--text-2);
+        font-size: 14px;
+        margin-bottom: 2px;
+      }
+      .empty span {
+        font-size: 13px;
+      }
+      [hidden] {
+        display: none !important;
+      }
+
+      /* notices */
+      .notice-list {
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      }
+      .notice {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        padding: 12px 14px;
+        border-radius: var(--radius);
+        background: var(--surface-2);
+        border: 1px solid var(--line);
+      }
+      .notice .n-icon {
+        width: 30px;
+        height: 30px;
+        border-radius: 9px;
+        display: grid;
+        place-items: center;
+        flex: none;
+      }
+      .notice[data-kind='claim-lost'] .n-icon,
+      .notice[data-kind='edit-not-applied'] .n-icon {
+        color: var(--rose);
+        background: var(--rose-soft);
+      }
+      .notice[data-kind='claim-conflict'] .n-icon {
+        color: var(--sky);
+        background: var(--sky-soft);
+      }
+      .notice[data-kind='delete-conflict'] .n-icon {
+        color: var(--amber);
+        background: var(--amber-soft);
+      }
+      .notice .n-text {
+        min-width: 0;
+        flex: 1;
+      }
+      .notice .n-msg {
+        font-size: 13.5px;
+        font-weight: 550;
+      }
+      .notice .n-ref {
+        font-size: 12px;
+        color: var(--text-3);
+        margin-top: 2px;
+        overflow-wrap: anywhere;
+      }
+      .notice .n-state {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-3);
+        white-space: nowrap;
+      }
+      .notice.open .n-state {
+        color: var(--amber);
+      }
+      .notice:not(.open) {
+        opacity: 0.78;
+      }
+
+      .footer {
+        margin-top: 28px;
+        text-align: center;
+        font-size: 12px;
+        color: var(--text-3);
+      }
+      .footer code {
+        font-family: var(--mono);
+        font-size: 11.5px;
+      }
+
+      /* ------------------------------------------------------------ responsive */
+      @media (max-width: 1020px) {
+        .grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+      @media (max-width: 720px) {
+        .topbar-inner {
+          flex-wrap: wrap;
+          padding: 10px 14px;
+          gap: 10px;
+        }
+        .brand p {
+          display: none;
+        }
+        .topbar-spacer {
+          display: none;
+        }
+        .device-chip {
+          margin-left: auto;
+        }
+        .sync-area {
+          order: 3;
+          width: 100%;
+        }
+        .sync-pill {
+          flex: 1;
+          max-width: none;
+        }
+        .net .net-text {
+          display: none;
+        }
+        .page {
+          padding: 18px 12px 48px;
+        }
+        .row {
+          grid-template-columns: 1fr;
+        }
+        .stats {
+          width: 100%;
+        }
+        .stat {
+          min-width: 0;
+          flex: 1;
+          padding: 10px 12px;
+        }
+        .panel-head {
+          padding: 16px 14px 12px;
+        }
+        .composer {
+          margin: 0 12px 14px;
+        }
+        .list {
+          padding: 0 8px 8px;
+        }
+        .notice-list {
           grid-template-columns: 1fr;
         }
       }
-      section {
-        border: 1px solid #8884;
-        border-radius: 8px;
-        padding: 0.75rem;
-      }
-      ul {
-        list-style: none;
-        padding: 0;
-      }
-      li {
-        border-top: 1px solid #8883;
-        padding: 0.5rem 0;
-      }
-      form {
-        display: grid;
-        gap: 0.4rem;
-      }
-      .meta {
-        opacity: 0.7;
-        font-size: 0.85em;
-      }
-      .tag {
-        display: inline-block;
-        border: 1px solid #8886;
-        border-radius: 999px;
-        padding: 0 0.5em;
-        margin-right: 0.25em;
-        font-size: 0.8em;
-      }
-      .notice.open {
-        font-weight: 600;
-      }
-      button {
-        cursor: pointer;
-      }
-      #status {
-        font-size: 0.9em;
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation: none !important;
+          transition: none !important;
+        }
       }
     </style>
   </head>
   <body>
-    <header>
-      <h1>GHOSTLINE</h1>
-      <span>device: <strong id="device"></strong></span>
-      <button id="sync" type="button">Sync</button>
-      <span id="status" role="status"></span>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path
+                d="M5 20V10a7 7 0 0 1 14 0v10l-3.5-2.5L12 20l-3.5-2.5Z"
+                fill="#07110d"
+                opacity="0.92"
+              />
+              <circle cx="9.3" cy="10.5" r="1.4" fill="#63e6be" />
+              <circle cx="14.7" cy="10.5" r="1.4" fill="#63e6be" />
+            </svg>
+          </div>
+          <div>
+            <h1>GHOSTLINE</h1>
+            <p>Neighbourhood coordination that keeps working offline</p>
+          </div>
+        </div>
+        <div class="topbar-spacer"></div>
+        <div class="device-chip" title="Each device keeps its own copy of the data">
+          <span class="avatar" id="device-avatar" aria-hidden="true"></span>
+          <span>
+            <span class="label">This device</span>
+            <strong id="device"></strong>
+          </span>
+        </div>
+        <div class="sync-area">
+          <span class="net" id="net" data-online="true">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M2 8.8a15 15 0 0 1 20 0M5.5 12.5a10 10 0 0 1 13 0M9 16.2a5 5 0 0 1 6 0" />
+              <circle cx="12" cy="19.5" r="0.9" fill="currentColor" />
+            </svg>
+            <span class="net-text" id="net-text">Network</span>
+          </span>
+          <div class="sync-pill" id="sync-pill" data-state="ready">
+            <span class="dot" aria-hidden="true"></span>
+            <span id="status" role="status"></span>
+          </div>
+          <button id="sync" class="btn primary" type="button">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"
+              />
+            </svg>
+            <span>Sync</span>
+          </button>
+        </div>
+      </div>
     </header>
-    <main>
-      <section aria-labelledby="ann-h">
-        <h2 id="ann-h">Announcements</h2>
-        <form id="ann-form">
-          <input name="title" placeholder="Title" required />
-          <textarea name="body" placeholder="Message"></textarea>
-          <button type="submit">Save draft</button>
-        </form>
-        <ul id="announcements"></ul>
+
+    <main class="page" id="main">
+      <section class="hero" aria-label="Overview">
+        <div>
+          <h2>What does the neighbourhood <em>need</em> today?</h2>
+          <p>
+            Post a request or an announcement at any time, even with no connection. Everything is
+            saved on this device first and shared when you press Sync.
+          </p>
+        </div>
+        <div class="stats" aria-live="polite">
+          <div class="stat"><b id="stat-open">0</b><span>open requests</span></div>
+          <div class="stat"><b id="stat-pub">0</b><span>published</span></div>
+          <div class="stat"><b id="stat-notices">0</b><span>open notices</span></div>
+        </div>
       </section>
-      <section aria-labelledby="req-h">
-        <h2 id="req-h">Requests</h2>
-        <form id="req-form">
-          <input name="title" placeholder="What is needed?" required />
-          <input name="details" placeholder="Details" />
-          <input name="tags" placeholder="Tags, comma separated" />
-          <button type="submit">Ask for help</button>
-        </form>
-        <ul id="requests"></ul>
-      </section>
-      <section aria-labelledby="notices-h" style="grid-column: 1 / -1">
-        <h2 id="notices-h">Notices</h2>
-        <ul id="notices"></ul>
-      </section>
+
+      <div class="grid">
+        <section class="panel" aria-labelledby="req-h">
+          <div class="panel-head">
+            <div class="panel-icon req" aria-hidden="true">
+              <svg class="icon" viewBox="0 0 24 24">
+                <path
+                  d="M7 11V7a2 2 0 1 1 4 0v3M11 10V5.5a2 2 0 1 1 4 0V10M15 10V7a2 2 0 1 1 4 0v6a7 7 0 0 1-7 7h-1a7 7 0 0 1-6-3.4l-2.2-3.8a2 2 0 0 1 3.4-2L7 13"
+                />
+              </svg>
+            </div>
+            <div>
+              <h2 id="req-h">Requests</h2>
+              <p>Ask for help, claim what you can do, add your voice.</p>
+            </div>
+            <span class="count" id="req-count" aria-label="Number of requests">0</span>
+          </div>
+          <form id="req-form" class="composer" novalidate>
+            <label class="field">
+              <span>What is needed?</span>
+              <input
+                type="text"
+                name="title"
+                placeholder="What is needed?"
+                required
+                maxlength="140"
+                autocomplete="off"
+                aria-describedby="req-title-err"
+              />
+              <span class="field-error" id="req-title-err" aria-live="polite"></span>
+            </label>
+            <div class="row">
+              <label class="field">
+                <span>Details <span class="opt">(optional)</span></span>
+                <input type="text" name="details" placeholder="Details" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span>Tags <span class="opt">(optional)</span></span>
+                <input
+                  type="text"
+                  name="tags"
+                  placeholder="Tags, comma separated"
+                  autocomplete="off"
+                />
+              </label>
+            </div>
+            <div class="composer-foot">
+              <span class="form-note" id="req-note" aria-live="polite"></span>
+              <span class="hint">Works offline.</span>
+              <button type="submit" class="btn primary">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                <span>Ask for help</span>
+              </button>
+            </div>
+          </form>
+          <ul id="requests" class="list"></ul>
+          <div class="empty" id="req-empty" hidden>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 7h16M4 12h10M4 17h7" />
+            </svg>
+            <strong>No requests yet</strong>
+            <span>Ask for something above, or press Sync to see what others need.</span>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="ann-h">
+          <div class="panel-head">
+            <div class="panel-icon ann" aria-hidden="true">
+              <svg class="icon" viewBox="0 0 24 24">
+                <path
+                  d="M4 10v4a1 1 0 0 0 1 1h2l6 4V5L7 9H5a1 1 0 0 0-1 1ZM17 8.5a5 5 0 0 1 0 7M19.5 6a8.5 8.5 0 0 1 0 12"
+                />
+              </svg>
+            </div>
+            <div>
+              <h2 id="ann-h">Announcements</h2>
+              <p>Draft privately, publish when ready.</p>
+            </div>
+            <span class="count" id="ann-count" aria-label="Number of announcements">0</span>
+          </div>
+          <form id="ann-form" class="composer" novalidate>
+            <label class="field">
+              <span>Title</span>
+              <input
+                type="text"
+                name="title"
+                placeholder="Title"
+                required
+                maxlength="140"
+                autocomplete="off"
+                aria-describedby="ann-title-err"
+              />
+              <span class="field-error" id="ann-title-err" aria-live="polite"></span>
+            </label>
+            <label class="field">
+              <span>Message <span class="opt">(optional)</span></span>
+              <textarea name="body" placeholder="Message" rows="3"></textarea>
+            </label>
+            <div class="composer-foot">
+              <span class="form-note" id="ann-note" aria-live="polite"></span>
+              <span class="hint">Others see drafts after sync.</span>
+              <button type="submit" class="btn primary">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 4h11l3 3v13H5zM8 4v5h7M8 20v-6h8v6" />
+                </svg>
+                <span>Save draft</span>
+              </button>
+            </div>
+          </form>
+          <ul id="announcements" class="list"></ul>
+          <div class="empty" id="ann-empty" hidden>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 10v4a1 1 0 0 0 1 1h2l6 4V5L7 9H5a1 1 0 0 0-1 1Z" />
+            </svg>
+            <strong>Nothing announced yet</strong>
+            <span>Share news with everyone: a market, a meeting, a road closure.</span>
+          </div>
+        </section>
+
+        <section class="panel notices-panel" aria-labelledby="notices-h">
+          <div class="panel-head">
+            <div class="panel-icon not" aria-hidden="true">
+              <svg class="icon" viewBox="0 0 24 24">
+                <path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15ZM10 20.5a2 2 0 0 0 4 0" />
+              </svg>
+            </div>
+            <div>
+              <h2 id="notices-h">Notices</h2>
+              <p>
+                When two people changed the same thing at once, GHOSTLINE tells you what happened.
+              </p>
+            </div>
+            <span class="count" id="notice-count" aria-label="Number of notices">0</span>
+          </div>
+          <ul id="notices" class="list notice-list"></ul>
+          <div class="empty" id="notice-empty" hidden>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 12.5l4.5 4.5L19 7.5" />
+            </svg>
+            <strong>All clear</strong>
+            <span>No conflicting changes so far.</span>
+          </div>
+        </section>
+      </div>
+
+      <p class="footer">
+        Built on WEAVE. Every change is stored on this device and merged the same way on every
+        device. <code id="footer-device"></code>
+      </p>
     </main>
     <script type="module" src="./src/app.ts"></script>
   </body>
