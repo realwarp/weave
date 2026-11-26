@@ -1,6 +1,7 @@
 # ADR-0008: Schema upgrade on read, contiguous-prefix delivery, all-or-nothing batch validation
 
-Status: accepted. Requirements: R4.7, R4.10, R8, R15.11, R15.12.
+Status: accepted. Shipped in 0.1.0; holding newer-schema ops ([ADV], schema option 3 as an opt-in)
+was added in 0.2.0 (task T5.5, ADR-0015). Requirements: R4.7, R4.10, R8, R8.7, R15.11, R15.12.
 
 ## Context
 
@@ -33,7 +34,10 @@ half-updated or with a gap in an origin's sequence.
   value rules, canonical form, hash, identity, schema) before anything is written. One failure
   rejects the whole batch; storage stays byte-identical. The sync engine then retries **per
   origin**, so good origins still arrive and the bad one is reported in `rejectedOrigins`.
-- Mixed-version holding (schema option 3) is [ADV] and not implemented.
+- Mixed-version holding (schema option 3) is [ADV]. In 0.1.0 it was not implemented. 0.2.0 adds
+  it as an opt-in (`holdNewerSchema`): held ops are stored and forwarded but stay out of state until
+  an upgrade validates them. Without the option, upgrade on read and prefix delivery apply as above.
+  Mixed-version writing is still not implemented. See ADR-0015.
 
 ## Consequences
 

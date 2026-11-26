@@ -39,6 +39,28 @@ default; 0.1.0 code, adapters and transports work unchanged. Details and limits:
   cases. `verifyOpLine` now accepts `restore` ops structurally; a collection without restore still
   rejects them with `NOT_SUPPORTED`.
 
+### Upgrading from 0.1.0
+
+- A 0.1.0 store opens in place; no data migration is needed, and stored `mutationId`s still
+  replay.
+- Upgrade every device and the relay before turning on any Phase 5 feature. A 0.1.0 peer rejects
+  `restore` ops (`NOT_SUPPORTED`), and it cannot define counter or custom fields or a `deletes`
+  policy; it would apply an `update-wins` collection's ordinary ops with delete-wins rules.
+- **Do not downgrade a store to 0.1.0 after any Phase 5 feature has written to it.** 0.1.0 does
+  not detect the newer data: it opens the store without an error but can silently derive a
+  different state. For example, with a stored `restore` op, 0.1.0 first shows the restored record
+  from the saved index, and after `rebuild()` it ignores the restore and the record reads as
+  deleted. Downgrading is not supported; keep a copy of the 0.1.0 data before turning on Phase 5
+  features if you may need to go back.
+
+### Fixed (after the 0.1.0 tag, PR #1 review)
+
+- Apps: conflict views use the conflict frontier. The FIELDNOTE conflict history lists the
+  frontier's migrated values, so a v1 `location` edit competing with a v2 `site` edit shows both;
+  GHOSTLINE claim and delete notices count only this device's ops in the frontier, so an earlier,
+  superseded claim no longer reports "claim lost". The boundary check lets apps read the public
+  `ConflictRecord.frontier` field.
+
 ### Fixed (found by independent review during Phase 5)
 
 - Held ops are now validated against the new schema when the app is upgraded (T5.5).

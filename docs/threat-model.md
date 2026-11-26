@@ -69,12 +69,15 @@ These are not defended in the MVP. They are stated so that applications can deci
 - **`wallTime` is unauthenticated.** It is display information only and is not covered by the
   hash; ordering never reads it.
 - **Acknowledgement over-claim.** The relay records what a member says it holds; it cannot verify
-  the claim. A malicious or buggy member can over-claim. In the MVP this changes no data, because
-  nothing is deleted based on acknowledgements.
-- **Compaction trust assumption ([ADV], not implemented).** Compaction would remove ops that every
-  registered member has acknowledged. It assumes members follow the acknowledgement protocol:
-  they ack only after durable storage and never claim more than they hold. It is not safe against
-  a member that over-claims (design 10.3; ADR-0006 is written in task T4.1).
+  the claim. A malicious or buggy member can over-claim. Without compaction this changes no data,
+  because nothing is deleted based on acknowledgements.
+- **Compaction trust assumption ([ADV], 0.2.0, off by default).** With compaction enabled, ops
+  that every registered member has acknowledged may be removed. This assumes members follow the
+  acknowledgement protocol: they ack only after durable storage and never claim more than they
+  hold. It is not safe against a member that over-claims: ops that another member still needs can
+  be discarded, and that member must then bootstrap from a snapshot (`NEEDS_SNAPSHOT`). A
+  snapshot's kept conflict-history archive is trusted the same way (design 10.3, ADR-0006,
+  ADR-0015).
 - **Local tampering.** Checksums detect accidental corruption. They do not stop a local user who can
   rewrite the data directory.
 
