@@ -26,4 +26,7 @@ flowchart LR
   SYN --> ENG
   SYN --> TR
   TR -- "HTTP + NDJSON" --> RC --> RS
+  TR -. "WebSocket (direct, 0.2.0)" .-> PEER["Another device's replica.endpoint()"]
 ```
+
+A transport can also be in-process (`inProcessTransport`), which tests and same-process sync use.

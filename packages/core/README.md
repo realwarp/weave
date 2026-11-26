@@ -2,11 +2,17 @@
 
 WEAVE core: operation log, canonical encoding, state derivation, sync engine.
 
-Part of the WEAVE monorepo. See the root README and `docs/`.
+Part of the WEAVE monorepo. Start with the [core API guide](../../docs/guides/core-api.md); the
+[root README](../../README.md) and the [documentation index](../../docs/README.md) cover the rest.
+
+| Entry point            | Contents                                                                                     |
+| ---------------------- | -------------------------------------------------------------------------------------------- |
+| `@weave/core`          | `createReplica`, `defineCollection`, `f`, `defineResolver`, `assertResolverDeterministic`, `WeaveError`, `isWeaveError`, `ERROR_CODES`, `newMutationId` and the public types |
+| `@weave/core/protocol` | Wire types and opaque helpers for adapter, transport and relay authors                       |
 
 ## Test coverage
 
-Measured on 2026-11-24 with `@vitest/coverage-v8` over `packages/core/src/**` (frozen contracts
+Measured for 0.1.0 on 2026-11-24 (before the 0.2.0 additions) with `@vitest/coverage-v8` over `packages/core/src/**` (frozen contracts
 excluded), 154 tests passing:
 
 ```sh
