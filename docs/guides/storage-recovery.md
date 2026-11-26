@@ -92,6 +92,17 @@ Copy-Item -Recurse relay-data "relay-data.backup-$(Get-Date -Format yyyyMMddHHmm
 List the directory and note the exact contents of `LOCK`, whether `LOCK.recovery` exists, and
 which `LOCK.stale-*` and `LOCK.new-*` files exist.
 
+If `LOCK.recovery` exists, read its `observedLockNonce`. It is the `nonce` of the `LOCK` that the
+interrupted takeover observed and meant to replace. Compare it with the `nonce` in `LOCK`:
+
+- Equal: the takeover stopped before replacing `LOCK`, so `LOCK` is still the dead holder's lock.
+- Different: the takeover had already replaced `LOCK`, so `LOCK` names the recoverer (its `pid`
+  is the `pid` in `LOCK.recovery`), or someone changed `LOCK` afterwards.
+
+A guard left by an earlier manual cleanup (`{"maintenance":true}`) has no `observedLockNonce`.
+Either way, every `pid` named in `LOCK` and `LOCK.recovery` must already be confirmed gone (step
+2). This comparison tells you what happened; it does not change the steps below.
+
 ### 5. Hold the guard, then remove the stale files and `LOCK`
 
 - If `LOCK.recovery` exists, **keep it**. Otherwise create it so that it fails if someone else
