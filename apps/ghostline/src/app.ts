@@ -218,7 +218,11 @@ function inlineEditor(
 // overlapping renders would each clear and then fill the same lists.
 let rendering: Promise<void> = Promise.resolve();
 function render(): Promise<void> {
-  rendering = rendering.then(draw, draw);
+  // Background redraws are started with `void render()`: report a failure instead of leaving an
+  // unhandled rejection, and keep the chain usable for the next redraw.
+  rendering = rendering.then(draw).catch((e: unknown) => {
+    status(MESSAGES.actionFailed, 'error', errorDetail(e));
+  });
   return rendering;
 }
 
