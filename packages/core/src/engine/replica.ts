@@ -1436,8 +1436,7 @@ class Engine implements Replica, SyncHost {
             });
           }
         }
-        const mutations = await tx.scan('mut/');
-        return { state, compaction, list, mutations };
+        return { state, compaction, list };
       });
 
       const removedOps: Op[] = [];
@@ -1479,13 +1478,9 @@ class Engine implements Replica, SyncHost {
       };
       if (removedOps.length === 0) return report;
 
-      const gone = new Set(removedOps.map((o) => opIdKey(o)));
-      const mutKeys = loaded.mutations
-        .filter(([, text]) => {
-          const m = JSON.parse(text) as { opId: { replicaId: string; seq: number } };
-          return gone.has(opIdKey(m.opId));
-        })
-        .map(([key]) => key);
+      // `mut/` records are kept: a retry of a mutation whose op was discarded must still be
+      // recognized (R5.4). A record holds only `payloadHash`, `opId` and `recordId`, and the
+      // write path answers a retry from it alone, without the op (F7).
       await this.storage.transaction('rw', async (tx) => {
         const current = await readMetaState(tx);
         if (current.commit !== loaded.state.commit)
@@ -1494,7 +1489,6 @@ class Engine implements Replica, SyncHost {
           tx.delete(keys.op(op.replicaId, op.seq));
           tx.delete(keys.rop(op.collection, op.recordId, op.replicaId, op.seq));
         }
-        for (const key of mutKeys) tx.delete(key);
         for (const w of writes)
           tx.put(keys.chist(w.collection, w.recordId), JSON.stringify(w.archive));
         tx.put(

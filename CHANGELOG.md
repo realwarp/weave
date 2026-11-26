@@ -60,6 +60,10 @@ default; 0.1.0 code, adapters and transports work unchanged. Details and limits:
   list for every op (linear instead of quadratic in one origin's history).
 - Snapshot bootstrap refuses an op of a collection the app does not define with `SCHEMA_TOO_NEW`,
   as normal sync does; only a replica with `holdNewerSchema: true` stores it as held.
+- Compaction keeps `mut/` records when it discards their ops, so a retry of a compacted mutation
+  still returns the original result (`replayed: true`) or fails with `MUTATION_ID_REUSED`, as
+  R5.4 promises. Trade-off: `mut/` keeps one small entry per local write for the life of the
+  replica; there is no expiry.
 
 ### Fixed (merged from `main`, PR #3)
 

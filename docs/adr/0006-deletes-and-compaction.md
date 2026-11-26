@@ -53,7 +53,11 @@ compacted that it does not have, and that member would then miss them.
 - **What a replica discards.** For each record, the ops covered by the horizon that are in no
   field frontier, and only if the record derived from the remaining ops is identical (values,
   frontiers, deletion, open conflicts) to the stored record; otherwise the record keeps every op.
-  Superseded `mut/` entries go with their ops. The record's conflict history is copied to
+  `mut/` entries are kept even when their op is discarded, so a retry of that `mutationId` still
+  returns the original result or fails with `MUTATION_ID_REUSED` (R5.4); they hold only
+  `payloadHash`, `opId` and `recordId`, and they accumulate for the life of the replica (no
+  expiry). (Corrected in PR #2: the first version deleted them with their ops, which broke
+  R5.4 after compaction.) The record's conflict history is copied to
   `chist/<collection>/<recordId>` first, so `conflicts.history()` and notification marks are
   unchanged.
 - **Tombstones (R3.13).** A deleted record keeps every op until a delete op is covered by the

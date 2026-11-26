@@ -116,9 +116,14 @@ on the previous code (captured before the fix) and fails again when the fix is r
 | F5 | Snapshot verification copied one origin's seq list per op | per-origin set, added in place | `packages/core/test/sync/snapshot-scaling.test.ts` (counts iterator steps, no timing) | 1 fails |
 | F6 | Snapshot bootstrap accepted ops of an undefined collection without holding | `SCHEMA_TOO_NEW` unless holding (R4.10, R8.7) | `packages/core/test/sync/snapshot-unknown-collection.test.ts` | 1 fails |
 
-Open: F7. Compaction deletes the `mut/` records of the ops it removes (design 7.2 and ADR-0006
-say so), so a retry of such a mutation is no longer recognized. R5.4 states the idempotency
-without a compaction exception. This needs a decision; nothing was changed.
+F7 (repository-owner decision: keep mutation records through compaction). Compaction deleted the
+`mut/` records of the ops it removed, so a retry of such a mutation created a new op. It now keeps
+them; the write path answers a retry from the record alone. Test
+`packages/core/test/sync/compaction-mutation-id.test.ts`: on the previous code 4 of 6 tests
+failed (a retry of a compacted create made a new op at seq 4 with `replayed: false`, and a
+different payload was accepted instead of `MUTATION_ID_REUSED`); with the fix all pass, including
+after closing and reopening the replica. Design 7.2 and ADR-0006 are corrected. Trade-off: `mut/`
+keeps one small entry per local write for the life of the replica, with no expiry.
 
 Verification at `dfd1c79` (clean tree): build, lint, format, test typecheck, boundaries, license,
 API docs and both demos exit 0; `Tests  753 passed (753)` in 75 files; browser
@@ -149,7 +154,7 @@ New features with no breaking change to existing behaviour, so a minor version u
 Versioning. The `[Unreleased]` section of `CHANGELOG.md` is written for it. Proposed steps, not
 taken without approval:
 
-1. Decide F7, have the fixes independently reviewed, then merge pull request #2
+1. Have the fixes F1-F7 independently reviewed, then merge pull request #2
    (`feat/phase-5-advanced` to `main`, opened, not merged) after human approval.
 2. Set `version` to `0.2.0` in the root and package `package.json` files, and date the changelog
    section.
