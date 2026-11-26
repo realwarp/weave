@@ -162,4 +162,5 @@ repository owner's approval:
    repository owner approved it.
 2. Done: `version` is `0.2.0` in the root and every workspace `package.json` and in
    `package-lock.json`, and the changelog section is dated 2026-11-26.
-3. Done: `v0.2.0` is tagged on the release commit. The existing `v0.1.0` tag stays as it is.
+3. Pending: create and push the `v0.2.0` tag after the release PR is merged and tag creation is
+   authorized. The existing `v0.1.0` tag stays as it is.
