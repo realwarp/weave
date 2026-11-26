@@ -1,6 +1,6 @@
 {
   "name": "@weave/relay",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "WEAVE relay server: durable store-and-forward sync peer",
   "license": "MIT",
   "type": "module",

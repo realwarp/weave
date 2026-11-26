@@ -4,7 +4,8 @@ Branch `feat/phase-5-advanced`. The Phase 5 work (code, tests, README and change
 commit `3c175c7`; commit `5022b74` added this report. Starting point: `main` at the v0.1.0 merge
 `5e3e5d3`. The v0.1.0 tag is unchanged (tag object `b9e10ff`, commit `4b26e91`).
 
-Status: pull request #2 is merged into `main` (merge commit `0b4b42c`). 0.2.0 is not released yet.
+Status: pull request #2 is merged into `main` (merge commit `0b4b42c`), and the work is released
+as 0.2.0 (2026-11-26).
 
 ## Result
 
@@ -150,15 +151,16 @@ Runtime dependencies: none.
 - Authorization is per request and per origin, not per record; admin routes accept any valid
   relay secret.
 
-## Proposed release: 0.2.0
+## Release: 0.2.0
 
 New features with no breaking change to existing behaviour, so a minor version under Semantic
-Versioning. The `[Unreleased]` section of `CHANGELOG.md` is written for it. Proposed steps, not
-taken without approval:
+Versioning. The `[0.2.0]` section of `CHANGELOG.md` records it. Release steps, each taken with the
+repository owner's approval:
 
 1. Done: the fixes F1-F7 were independently reviewed (decision: approve), and pull request #2
    (`feat/phase-5-advanced` to `main`) was merged with a merge commit, `0b4b42c`, after the
    repository owner approved it.
-2. Set `version` to `0.2.0` in the root and package `package.json` files, and date the changelog
-   section.
-3. Tag `v0.2.0` on that commit. The existing `v0.1.0` tag stays as it is.
+2. Done: `version` is `0.2.0` in the root and every workspace `package.json` and in
+   `package-lock.json`, and the changelog section is dated 2026-11-26.
+3. Pending: create and push the `v0.2.0` tag after the release PR is merged and tag creation is
+   authorized. The existing `v0.1.0` tag stays as it is.
