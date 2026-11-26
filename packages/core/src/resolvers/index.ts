@@ -12,6 +12,8 @@ import type {
   ResolverName,
 } from '../contracts/resolver.js';
 
+import { counter } from './counter.js';
+
 function fail(message: string, details: Record<string, unknown> = {}): never {
   throw new WeaveError('RESOLVER_ERROR', message, { details });
 }
@@ -95,15 +97,17 @@ export const maxRank: Resolver = (entries, context: ResolverContext) => {
   return rankMap[bestIndex]!;
 };
 
-const REGISTRY: Readonly<Record<ResolverName, Resolver>> = {
+/** Resolvers selected by name. `custom` fields carry their own resolver (`f.custom`). */
+const REGISTRY: Readonly<Record<Exclude<ResolverName, 'custom'>, Resolver>> = {
   'last-writer-wins': lastWriterWins,
   max,
   min,
   'set-union': setUnion,
   'max-rank': maxRank,
+  counter,
 };
 
-export const RESOLVER_NAMES = Object.keys(REGISTRY) as ResolverName[];
+export const RESOLVER_NAMES = Object.keys(REGISTRY) as Array<Exclude<ResolverName, 'custom'>>;
 
 export function getResolver(name: ResolverName): Resolver {
   const r = (REGISTRY as Record<string, Resolver | undefined>)[name];

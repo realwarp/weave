@@ -110,4 +110,18 @@ export const keys = {
   notified: (conflictId: string): string => `notified/${conflictId}`,
   /** All notification marks. */
   notifiedPrefix: 'notified/',
+  /** [ADV] Compaction state of a replica (`MetaCompaction`). Absent until compaction is used. */
+  metaCompaction: 'meta/compaction',
+  /** [ADV] Conflict history entries of one record kept after its ops were compacted. */
+  chist: (collection: string, recordId: string): string => `chist/${collection}/${recordId}`,
 } as const;
+
+/** [ADV] Value stored at `meta/compaction` (R3.6 to R3.10). */
+export interface MetaCompaction {
+  /** The last horizon learned from the relay (or computed for a closed replica set). */
+  readonly horizon: VersionVector;
+  /** Per origin, the highest `seq` this replica has discarded. */
+  readonly compactedThrough: VersionVector;
+  /** Removed members and the last `seq` still accepted from each. */
+  readonly removed: Readonly<Record<ReplicaId, number>>;
+}

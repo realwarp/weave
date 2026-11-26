@@ -87,6 +87,7 @@ export function readModel(file) {
             let rule;
             let values;
             if (kind === 'set') rule = 'set-union';
+            else if (kind === 'counter') rule = 'counter';
             else if (kind === 'rank') {
               rule = 'max-rank';
               values = literal(call.arguments[0], consts);

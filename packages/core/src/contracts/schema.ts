@@ -1,8 +1,8 @@
 import type { JsonValue } from './json.js';
-import type { ResolverName } from './resolver.js';
+import type { CustomResolver, ResolverName } from './resolver.js';
 
 /** Field kinds of the schema language (design 5.1). */
-export type FieldKind = 'string' | 'number' | 'boolean' | 'json' | 'set' | 'rank';
+export type FieldKind = 'string' | 'number' | 'boolean' | 'json' | 'set' | 'rank' | 'counter';
 
 /**
  * Description of one field. `T` is a phantom type used only for inference of record types.
@@ -19,6 +19,8 @@ export interface FieldSpec<out T = unknown> {
   readonly rankMap?: readonly (string | number)[];
   /** `set` fields: the element spec. */
   readonly element?: FieldSpec;
+  /** [ADV] Fields built with `f.custom()`: the resolver used when `resolver` is `custom`. */
+  readonly custom?: CustomResolver;
   /** Runtime type check of one value of this field (D7 support is checked separately). */
   validate(value: unknown): boolean;
   /** Phantom marker; never set at runtime. */
@@ -59,6 +61,22 @@ export interface CollectionDefinition<
   readonly fields: F;
   /** Keyed by source version: `migrations[1]` upgrades version 1 to 2. */
   readonly migrations: Readonly<Record<number, Migration>>;
+  /** [ADV] Delete semantics (D6, R6.9). Absent means 0.1.0 behaviour: delete wins, no restore. */
+  readonly deletes?: DeleteOptions;
+}
+
+/**
+ * [ADV] Delete semantics of a collection (D6, R6.9). Every replica of a collection must use the
+ * same options, because they change what the same op set means.
+ */
+export interface DeleteOptions {
+  /**
+   * `delete-wins` (default): a record with a delete op is deleted, also when a concurrent `set`
+   * exists. `update-wins`: a delete op is ignored when some `set` op is concurrent with it.
+   */
+  readonly policy?: 'delete-wins' | 'update-wins';
+  /** Allow `collection.restore()`, which cancels every delete that happens before it. */
+  readonly restore?: boolean;
 }
 
 type FieldValue<S> = S extends FieldSpec<infer T> ? T : never;

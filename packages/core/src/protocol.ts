@@ -9,6 +9,7 @@ export type {
   ApplyIncoming,
   ApplyResult,
   BlockedOrigin,
+  CompactionInfo,
   PeerEntry,
   PullRequest,
   PullResponse,
@@ -16,6 +17,7 @@ export type {
   PushResponse,
   Rejection,
   RejectedOrigin,
+  Snapshot,
   Support,
   SyncCounts,
   SyncEndpoint,
@@ -26,7 +28,12 @@ export type { Op, OpPayload } from './contracts/op.js';
 export type { JsonValue, OpId, ReplicaId, VersionVector } from './contracts/json.js';
 export type { Clock, Random, Scheduler } from './contracts/env.js';
 export type { Logger, WeaveEvent } from './contracts/events.js';
-export type { MetaReplica, StorageAdapter, StorageTx } from './contracts/storage.js';
+export type {
+  MetaCompaction,
+  MetaReplica,
+  StorageAdapter,
+  StorageTx,
+} from './contracts/storage.js';
 export { keys, padSeq } from './contracts/storage.js';
 export { WeaveError, isWeaveError, ERROR_CODES } from './contracts/errors.js';
 export type { ErrorCode, WeaveErrorOptions } from './contracts/errors.js';
@@ -59,3 +66,12 @@ export {
   type SelectInput,
   type SelectOutput,
 } from './sync/select.js';
+export { assertIdentity, mayActAs, runAuthorize, summarize } from './sync/authorize.js';
+export type { AuthContext, AuthorizeHook, AuthorizeRequest, OpSummary } from './contracts/sync.js';
+export {
+  SNAPSHOT_FORMAT,
+  coversCompacted,
+  hashSnapshot,
+  sealSnapshot,
+  verifySnapshotEnvelope,
+} from './sync/snapshot.js';

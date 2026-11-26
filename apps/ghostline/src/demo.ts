@@ -5,8 +5,9 @@
  *
  * Steps: everyone creates content offline; devices sync; two people claim one request, two tag it,
  * one deletes an announcement another is editing; devices sync in a chosen order; the demo prints
- * every device's hashes and asserts they are equal, prints the notices, and finally repeats a write
- * with its stored mutationId after a simulated crash (`replayed: true`).
+ * every device's hashes and asserts they are equal, prints the notices, shows concurrent "me too"
+ * taps from three devices summing on every device (counter resolver, 0.2.0), and finally repeats
+ * a write with its stored mutationId after a simulated crash (`replayed: true`).
  */
 import { createReplica } from '@weave/core';
 import { fileStorage } from '@weave/storage/file';
@@ -19,6 +20,8 @@ import {
   editAnnouncement,
   listAnnouncements,
   listRequests,
+  meToo,
+  meTooCount,
   notices,
   publishAnnouncement,
   tagRequest,
@@ -120,6 +123,23 @@ for (const d of everyone) {
   for (const n of list) console.log(`  ${d.user.padEnd(4)} ${n.kind.padEnd(16)} ${n.message}`);
   if (list.length === 0) console.log(`  ${d.user.padEnd(4)} (no notices)`);
 }
+
+step('metoo', 'Three people tap "me too" on the firewood request while offline');
+await meToo(ana, firewood.recordId);
+await meToo(ben, firewood.recordId);
+await meToo(ben, firewood.recordId);
+await meToo(cho, firewood.recordId);
+console.log('  ana taps once, ben twice, cho once, all at the same time');
+for (const d of [cho, ana, ben, cho, ana]) await sync(d);
+const counts: number[] = [];
+for (const d of everyone) {
+  const r = (await listRequests(d)).find((x) => x.id === firewood.recordId)!;
+  counts.push(meTooCount(r));
+  console.log(`  ${d.user.padEnd(4)} me too = ${meTooCount(r)}`);
+}
+if (counts.some((c) => c !== 4)) throw new Error('the me too counts differ or lost a tap');
+console.log('  every tap counted once on every device (counter resolver)');
+await printHashes(everyone);
 
 step('replay', 'A write repeated with its stored mutationId after a simulated crash');
 const before = await ben.replica.hashes();

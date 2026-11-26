@@ -1,5 +1,5 @@
 import type { ErrorCode, WeaveError } from './errors.js';
-import type { ReplicaId, VersionVector } from './json.js';
+import type { JsonValue, ReplicaId, VersionVector } from './json.js';
 
 /** Map of collection name to the highest schema version the sender supports (R4.10). */
 export type Support = Readonly<Record<string, number>>;
@@ -50,6 +50,11 @@ export interface PullRequest {
   readonly limit: number;
   /** If specified, only sync these origins. */
   readonly origins?: readonly ReplicaId[];
+  /**
+   * [ADV] The puller holds ops it cannot read (R8.7): the sender delivers every op, ignoring
+   * `support`. Old endpoints ignore it and apply the prefix rule.
+   */
+  readonly hold?: boolean;
 }
 
 /** Response to a pull request. */
@@ -66,6 +71,54 @@ export interface PullResponse {
   readonly blocked: readonly BlockedOrigin[];
   /** More ops are available; client should continue syncing. */
   readonly more: boolean;
+  /**
+   * [ADV] Compaction state published by a relay (R3.6 to R3.10). Absent from endpoints that do not
+   * support compaction; old clients ignore it.
+   */
+  readonly compaction?: CompactionInfo;
+}
+
+/** [ADV] Compaction state published by the relay with every pull response (R3.6 to R3.10). */
+export interface CompactionInfo {
+  /**
+   * The stable horizon: per origin, the highest `seq` that every registered member has
+   * acknowledged (members that never acknowledged count as zero), capped by the relay's vector.
+   */
+  readonly horizon: VersionVector;
+  /** Per origin, the highest `seq` the relay has discarded; older history needs a snapshot. */
+  readonly compactedThrough: VersionVector;
+  /**
+   * Members removed with `removePeer`, each with the last `seq` accepted from it. Later ops from
+   * a removed member are refused with `PEER_REMOVED`.
+   */
+  readonly removed: Readonly<Record<ReplicaId, number>>;
+}
+
+/**
+ * [ADV] A snapshot for bootstrapping a new replica (R4.8). It holds the source's accepted op lines
+ * (tombstones included), the kept conflict history and the vectors, so a replica that imports it
+ * holds exactly the source's op set and can continue with normal sync. Integrity: `hash` is the
+ * SHA-256 of the canonical encoding of every other field, and every op line is verified on import.
+ */
+export interface Snapshot {
+  /** Always `weave-snapshot/1`. */
+  readonly format: 'weave-snapshot/1';
+  /** The replica the snapshot was taken from. */
+  readonly source: ReplicaId;
+  /** The source's accepted vector. */
+  readonly vector: VersionVector;
+  /** The source's highest accepted Lamport value. */
+  readonly maxLamport: number;
+  /** Per origin, the highest `seq` the source had discarded; older history exists only here. */
+  readonly compactedThrough: VersionVector;
+  /** Removed members known to the source, with the last `seq` still accepted from each. */
+  readonly removed: Readonly<Record<ReplicaId, number>>;
+  /** Every op line the source holds, in key order. */
+  readonly ops: readonly string[];
+  /** Conflict history kept after compaction, per record: `[collection, recordId, entries]`. */
+  readonly archives: ReadonlyArray<readonly [string, string, readonly JsonValue[]]>;
+  /** SHA-256 (hex) over the canonical encoding of all other fields. */
+  readonly hash: string;
 }
 
 /** Request to push ops to a remote peer. */
@@ -106,6 +159,10 @@ export interface SyncEndpoint {
   push(request: PushRequest): Promise<PushResponse>;
   /** Acknowledge the durable vector after a successful sync. */
   ack(request: AckRequest): Promise<void>;
+  /** [ADV] Fetches a snapshot to bootstrap from (R4.8). Optional; absent means not supported. */
+  snapshot?(): Promise<Snapshot>;
+  /** [ADV] Stores a snapshot at the endpoint, for example at a relay (R4.8). Optional. */
+  putSnapshot?(snapshot: Snapshot): Promise<void>;
 }
 
 /** Summary statistics from a sync operation. */
@@ -185,6 +242,51 @@ export interface SyncOptions {
   readonly batchSize?: number;
 }
 
+/**
+ * [ADV] The caller of an endpoint as authenticated by the transport (R16.3), for example from a
+ * bearer token. Absent when the transport authenticates nobody (0.1.0 behaviour).
+ */
+export interface AuthContext {
+  /** The authenticated principal, for example a user or device name. */
+  readonly principal: string;
+  /**
+   * The replica IDs this principal may act as: the `replicaId` it claims in requests and the
+   * origins of the ops it pushes. `'*'` allows any (for example a trusted forwarding service).
+   */
+  readonly writableAs: readonly ReplicaId[] | '*';
+}
+
+/** [ADV] The envelope fields of one op, as shown to an authorization hook (no field values). */
+export interface OpSummary {
+  /** The op's origin replica. */
+  readonly replicaId: ReplicaId;
+  /** The op's sequence number. */
+  readonly seq: number;
+  /** The op's collection. */
+  readonly collection: string;
+  /** The schema version the op was written with. */
+  readonly schemaVersion: number;
+}
+
+/** [ADV] One authorization decision (R16.4). */
+export interface AuthorizeRequest {
+  /** `apply`: ops are about to be stored here. `send`: ops are about to leave. */
+  readonly direction: 'apply' | 'send';
+  /** The other side: the requesting replica, or the endpoint this replica syncs with. */
+  readonly peer: ReplicaId;
+  /** The authenticated caller, when the transport provides one. */
+  readonly auth?: AuthContext;
+  /** The ops, in the order they would be applied or sent. */
+  readonly ops: readonly OpSummary[];
+}
+
+/**
+ * [ADV] Optional authorization hook (R16.4), called before applying or sending ops. Return
+ * `true` to allow. `false`, a rejected promise or a thrown error denies: the whole request fails
+ * with `UNAUTHORIZED` and nothing changes. It must not modify anything.
+ */
+export type AuthorizeHook = (request: AuthorizeRequest) => boolean | Promise<boolean>;
+
 /** Value stored at `peer/<peerId>` (design 3.4). */
 export interface PeerEntry {
   /** What the peer has confirmed holding durably. */
@@ -216,4 +318,9 @@ export interface ApplyResult {
 }
 
 /** Applies a batch of canonical op lines. All-or-nothing for ordinary failures (design 7.3). */
-export type ApplyIncoming = (lines: readonly string[], peerId: ReplicaId) => Promise<ApplyResult>;
+export type ApplyIncoming = (
+  lines: readonly string[],
+  peerId: ReplicaId,
+  /** [ADV] The authenticated sender, when known (R16.3). */
+  auth?: AuthContext,
+) => Promise<ApplyResult>;

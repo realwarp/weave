@@ -97,10 +97,14 @@ Built and tested: the core engine, memory, file and IndexedDB storage (IndexedDB
 transports, the relay, the simulator, both applications, and the property, scenario, fuzz,
 browser, relay end-to-end and benchmark suites. See [CHANGELOG.md](CHANGELOG.md).
 
-Not implemented ([ADV] features): compaction and `removePeer`, snapshot bootstrap, `restore` and
+Advanced features (Phase 5, built and independently reviewed on `feat/phase-5-advanced`, proposed
+for 0.2.0 and not yet released): compaction and `removePeer`, snapshot bootstrap, `restore` and
 `update-wins`, the counter resolver and custom resolvers, holding newer-schema ops, the
 authorization hook and authenticated identity, peer bans, the WebSocket transport and direct
-network sync, and the GHOSTLINE "me too" counter.
+network sync, and the GHOSTLINE "me too" counter. Every one is off unless you turn it on, and
+0.1.0 code keeps working unchanged; see
+[ADR-0015](docs/adr/0015-phase-5-contract-additions.md) for each addition and its limits, and
+`docs/reviews/T5.*.md` for the review reports.
 
 ## Guides
 

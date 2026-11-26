@@ -55,10 +55,15 @@ These are not defended in the MVP. They are stated so that applications can deci
 
 - **No encryption in transit** beyond TLS placed in front of the relay. Direct in-process sync has
   no network layer.
-- **No per-user authorization.** Any client with the token can read every op on the relay and push
-  ops for any origin.
-- **Claimed identity.** A sender can claim another replica's ID. Authenticated identity and an
-  authorization hook are [ADV] (R16.3, R16.4) and not implemented.
+- **Per-user authorization is opt-in (0.2.0).** With only the shared token, any client with it can
+  read every op on the relay and push ops for any origin, as in 0.1.0. The relay's `identities`
+  option maps a bearer secret to a principal and the replica IDs it may write as, and an
+  `authorize` hook can deny any batch before it is applied or sent (R16.3, R16.4, ADR-0015).
+- **Claimed identity.** Without `identities` (or `replica.endpoint({ auth })` in process), a
+  sender can claim another replica's ID. With them, a claimed ID or op origin outside the caller's
+  `writableAs` is refused with `UNAUTHORIZED` (HTTP 403) and nothing is stored. The identity is
+  taken only from the authenticated secret, never from the request body. Decisions are per origin,
+  not per record, and the admin routes still accept any valid secret.
 - **Origin stall.** A peer can stop one origin from propagating by sending invalid data for it. The
   origin is quarantined and reported; other origins keep syncing (design 7.3).
 - **`wallTime` is unauthenticated.** It is display information only and is not covered by the

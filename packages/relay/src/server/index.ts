@@ -3,6 +3,8 @@
  *
  *   POST /v1/pull  JSON -> NDJSON     POST /v1/push  NDJSON -> JSON
  *   POST /v1/ack   JSON -> 204        GET  /v1/health        -> JSON
+ *   [ADV] GET /v1/snapshot -> JSON    PUT  /v1/snapshot JSON -> 204
+ *   [ADV] POST /v1/admin/compact      POST /v1/admin/remove-peer
  *
  * An optional bearer token is compared in constant time and never logged.
  */
@@ -15,24 +17,90 @@ import {
   isWeaveError,
   systemScheduler,
   type AckRequest,
+  type AuthContext,
   type PullRequest,
   type Scheduler,
+  type Snapshot,
   type Support,
   type VersionVector,
 } from '@weave/core/protocol';
 import { decodePushRequest, encodePullResponse } from '@weave/transport/http';
 import type { RelayCore } from '../core/index.js';
+import { DEFAULT_MAX_SNAPSHOT_BYTES } from '../core/snapshot.js';
 
 export interface RelayServerOptions {
   readonly core: RelayCore;
-  /** When set, every request must carry `Authorization: Bearer <token>`. */
+  /**
+   * When set, every request must carry `Authorization: Bearer <token>`. This shared secret only
+   * opens the relay; it is NOT a device identity, so requests that use it carry no authenticated
+   * identity (0.1.0 behaviour).
+   */
   readonly token?: string;
+  /**
+   * [ADV] Per-caller secrets with the identity each one proves (R16.3). A request whose bearer
+   * secret matches an entry is authenticated as that entry, and may only act as the replica IDs in
+   * `writableAs`. The identity comes only from this server-side mapping, never from a request
+   * body. With `identities` and no shared `token`, only these secrets are accepted.
+   */
+  readonly identities?: readonly RelayIdentity[];
   /** Maximum request body size (default 4 MiB). */
   readonly maxBodyBytes?: number;
+  /** [ADV] Maximum snapshot upload size for `PUT /v1/snapshot` (default 64 MiB). */
+  readonly maxSnapshotBytes?: number;
   /** Receives one line per request without secrets. */
   readonly log?: (line: string) => void;
   /** Monotonic time source for request durations in the log (default: platform). */
   readonly scheduler?: Scheduler;
+}
+
+/** [ADV] One trusted secret-to-identity mapping of the relay server (R16.3). */
+export interface RelayIdentity {
+  /** The bearer secret that proves this identity. Never logged. */
+  readonly token: string;
+  /** A name for the caller, for example a user or device; shown to the authorization hook. */
+  readonly principal: string;
+  /** The replica IDs this caller may act as, or `'*'` for a trusted forwarder. */
+  readonly writableAs: readonly string[] | '*';
+}
+
+function checkIdentities(list: readonly RelayIdentity[]): void {
+  const seen = new Set<string>();
+  for (const id of list) {
+    if (typeof id.token !== 'string' || id.token.length === 0)
+      throw invalid('identities: every secret must be a non-empty string');
+    if (seen.has(id.token)) throw invalid('identities: secrets must be unique');
+    seen.add(id.token);
+    if (typeof id.principal !== 'string' || id.principal.length === 0)
+      throw invalid('identities: every principal must be a non-empty string');
+    if (id.writableAs !== '*') {
+      if (!Array.isArray(id.writableAs)) throw invalid('identities: writableAs must be a list');
+      for (const r of id.writableAs) replicaId(r, 'identities writableAs entry');
+    }
+  }
+}
+
+/**
+ * Who the request is, from the bearer header alone. `undefined`: refuse (401). `null`: accepted
+ * without an identity (nothing configured, or the shared secret).
+ */
+function authenticate(
+  header: string | undefined,
+  options: RelayServerOptions,
+): AuthContext | null | undefined {
+  const identities = options.identities ?? [];
+  // Compare against every entry, so timing does not reveal which one matched.
+  let match: RelayIdentity | undefined;
+  for (const id of identities) {
+    const ok = tokenMatches(header, id.token);
+    if (ok && match === undefined) match = id;
+  }
+  if (match !== undefined)
+    return {
+      principal: match.principal,
+      writableAs: match.writableAs === '*' ? '*' : [...match.writableAs],
+    };
+  if (options.token !== undefined) return tokenMatches(header, options.token) ? null : undefined;
+  return identities.length > 0 ? undefined : null;
 }
 
 export interface RunningRelay {
@@ -126,6 +194,9 @@ function pullRequest(body: Record<string, unknown>): PullRequest {
   ) {
     throw invalid('origins must be an array of replica IDs');
   }
+  // [ADV] R8.7: a puller that holds unreadable ops asks for every op.
+  const hold = body['hold'];
+  if (hold !== undefined && typeof hold !== 'boolean') throw invalid('hold must be a boolean');
   return {
     replicaId: replicaId(body['replicaId'], 'replicaId'),
     vector: vector(body['vector'], 'vector'),
@@ -134,6 +205,7 @@ function pullRequest(body: Record<string, unknown>): PullRequest {
     ...(origins === undefined
       ? {}
       : { origins: (origins as unknown[]).map((o) => replicaId(o, 'origins entry')) }),
+    ...(hold === true ? { hold: true } : {}),
   };
 }
 
@@ -146,8 +218,10 @@ function ackRequest(body: Record<string, unknown>): AckRequest {
 
 export function createRelayServer(options: RelayServerOptions): Server {
   const max = options.maxBodyBytes ?? 4 * 1024 * 1024;
+  const maxSnapshot = options.maxSnapshotBytes ?? DEFAULT_MAX_SNAPSHOT_BYTES;
   const log = options.log ?? (() => undefined);
   const scheduler = options.scheduler ?? systemScheduler;
+  if (options.identities !== undefined) checkIdentities(options.identities);
   return createServer((req, res) => {
     void (async () => {
       const route = `${req.method ?? 'GET'} ${(req.url ?? '/').split('?')[0]}`;
@@ -158,16 +232,28 @@ export function createRelayServer(options: RelayServerOptions): Server {
           status = 200;
           return send(res, 200, JSON.stringify({ ok: true, endpointId: options.core.endpointId }));
         }
-        if (
-          options.token !== undefined &&
-          !tokenMatches(req.headers.authorization, options.token)
-        ) {
+        const who = authenticate(req.headers.authorization, options);
+        // `auth` is the trusted identity of this request; nothing in the body can change it.
+        const auth = who ?? undefined;
+        if (who === undefined) {
           status = 401;
           return send(res, 401, JSON.stringify({ message: 'A valid bearer token is required' }));
         }
-        const body = await readBody(req, max);
+        if (route === 'GET /v1/snapshot') {
+          const s = await options.core.snapshot();
+          status = 200;
+          return send(res, 200, JSON.stringify(s));
+        }
+        const isSnapshotUpload = route === 'PUT /v1/snapshot';
+        const body = await readBody(req, isSnapshotUpload ? maxSnapshot : max);
+        if (isSnapshotUpload) {
+          await options.core.putSnapshot(parseJson(body) as unknown as Snapshot, auth);
+          status = 204;
+          res.writeHead(204);
+          return res.end();
+        }
         if (route === 'POST /v1/pull') {
-          const r = await options.core.pull(pullRequest(parseJson(body)));
+          const r = await options.core.pull(pullRequest(parseJson(body)), auth);
           status = 200;
           return send(res, 200, encodePullResponse(r), 'application/x-ndjson');
         }
@@ -175,12 +261,25 @@ export function createRelayServer(options: RelayServerOptions): Server {
           const request = decodePushRequest(body);
           replicaId(request.replicaId, 'replicaId');
           support(request.support);
-          const r = await options.core.push(request);
+          const r = await options.core.push(request, auth);
           status = 200;
           return send(res, 200, JSON.stringify(r));
         }
         if (route === 'POST /v1/ack') {
-          await options.core.ack(ackRequest(parseJson(body)));
+          await options.core.ack(ackRequest(parseJson(body)), auth);
+          status = 204;
+          res.writeHead(204);
+          return res.end();
+        }
+        if (route === 'POST /v1/admin/compact') {
+          const result = await options.core.compact();
+          status = 200;
+          return send(res, 200, JSON.stringify(result));
+        }
+        if (route === 'POST /v1/admin/remove-peer') {
+          const parsed = parseJson(body);
+          const replicaIdValue = replicaId(parsed['replicaId'], 'replicaId');
+          await options.core.removePeer(replicaIdValue);
           status = 204;
           res.writeHead(204);
           return res.end();
@@ -202,6 +301,20 @@ export function createRelayServer(options: RelayServerOptions): Server {
         }
         if (isWeaveError(e)) {
           const retryable = e.code === 'STORAGE_CONFLICT' || e.code === 'STORAGE_ERROR';
+          // [ADV] A denied identity or hook decision is 403 (R16.3, R16.4).
+          if (e.code === 'UNAUTHORIZED') {
+            status = 403;
+            return send(res, status, JSON.stringify({ code: e.code, message: e.message }));
+          }
+          // Map NEEDS_SNAPSHOT and PEER_REMOVED to HTTP 409
+          if (e.code === 'NEEDS_SNAPSHOT' || e.code === 'PEER_REMOVED') {
+            status = 409;
+            return send(
+              res,
+              status,
+              JSON.stringify({ code: e.code, message: e.message, details: e.details }),
+            );
+          }
           status = retryable ? 503 : 400;
           return send(
             res,

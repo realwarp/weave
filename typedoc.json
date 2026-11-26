@@ -7,7 +7,9 @@
     "packages/storage/src/file/index.ts",
     "packages/storage/src/indexeddb/index.ts",
     "packages/transport/src/in-process/index.ts",
-    "packages/transport/src/http/index.ts"
+    "packages/transport/src/http/index.ts",
+    "packages/transport/src/websocket/index.ts",
+    "packages/transport/src/websocket/server.ts"
   ],
   "tsconfig": "tsconfig.docs.json",
   "out": "docs/api",

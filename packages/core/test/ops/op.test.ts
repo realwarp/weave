@@ -131,7 +131,9 @@ describe('verifyOpLine (R16.1, R16.2)', () => {
       [tamper(op, { hash: 'zz' }), 'VALIDATION_FAILED'],
       [tamper(op, { wallTime: 'x' }), 'VALIDATION_FAILED'],
       [tamper(op, { fields: { n: 2 ** 60 } }), 'UNSUPPORTED_VALUE'],
-      [tamper(op, { kind: 'restore' }), 'NOT_SUPPORTED'],
+      // 0.2.0 (T5.3): `restore` is structurally valid but must have empty fields. Collections
+      // without restore reject it with NOT_SUPPORTED in the engine (test/state/restore-engine).
+      [tamper(op, { kind: 'restore' }), 'VALIDATION_FAILED'],
     ];
     for (const [line, code] of cases) await expectCode(verifyOpLine(line), code);
   });

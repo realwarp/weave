@@ -4,8 +4,15 @@
 import { assertSupported, toCanonical } from '../canonical/encode.js';
 import { WeaveError } from '../contracts/errors.js';
 import type { JsonValue } from '../contracts/json.js';
-import type { ResolverName } from '../contracts/resolver.js';
-import type { CollectionDefinition, FieldSpec, Migration } from '../contracts/schema.js';
+import type { CustomResolver, ResolverName } from '../contracts/resolver.js';
+import { isCounterState } from '../resolvers/counter.js';
+import { RESOLVER_NAME_PATTERN } from '../resolvers/custom.js';
+import type {
+  CollectionDefinition,
+  DeleteOptions,
+  FieldSpec,
+  Migration,
+} from '../contracts/schema.js';
 import { COLLECTION_PATTERN } from '../ops/op.js';
 
 type Req<O> = O extends { readonly required: true } ? true : false;
@@ -23,7 +30,7 @@ function spec<T>(
   required: boolean,
   resolver: ResolverName,
   validate: (v: unknown) => boolean,
-  extra: Partial<Pick<FieldSpec, 'rankMap' | 'element'>> = {},
+  extra: Partial<Pick<FieldSpec, 'rankMap' | 'element' | 'custom'>> = {},
 ): FieldSpec<T> {
   return Object.freeze({ kind, required, resolver, validate, ...extra }) as FieldSpec<T>;
 }
@@ -108,6 +115,48 @@ export const f = {
     ) as Spec<T[], O>;
   },
   /**
+   * [ADV] Creates a counter field (R6.10): the sum of per-replica deltas. Writes take a delta (a
+   * safe integer: `update(id, { likes: 1 })` adds one, `-1` takes one away; `create` starts from
+   * zero plus the delta). Reads give the total. Concurrent deltas all count.
+   * @param options Configuration options including required status.
+   * @returns A field specification whose reads are numbers.
+   */
+  counter<const O extends BaseOptions = Record<never, never>>(options?: O): Spec<number, O> {
+    return spec<number>('counter', options?.required === true, 'counter', isCounterState) as Spec<
+      number,
+      O
+    >;
+  },
+  /**
+   * [ADV] Gives a field a custom resolver (R6.10). The base field keeps its kind, type check and
+   * required flag; concurrent values are resolved by `resolver` instead of the built-in one.
+   * Check the resolver with `assertResolverDeterministic` in tests.
+   * @param base A field from another builder (not `f.counter()`).
+   * @param resolver A resolver made with `defineResolver`.
+   * @returns The same field with the custom resolver.
+   * @throws VALIDATION_FAILED for a counter base or an invalid resolver.
+   */
+  custom<S extends FieldSpec>(
+    base: S,
+    resolver: CustomResolver<S extends FieldSpec<infer T> ? T : never>,
+  ): S {
+    if (base.kind === 'counter')
+      throw new WeaveError('VALIDATION_FAILED', 'A counter field cannot have a custom resolver');
+    if (
+      typeof resolver !== 'object' ||
+      resolver === null ||
+      typeof resolver.resolve !== 'function' ||
+      !RESOLVER_NAME_PATTERN.test(resolver.name)
+    )
+      throw new WeaveError('VALIDATION_FAILED', 'f.custom needs a resolver from defineResolver');
+    const { rankMap, element } = base;
+    return spec(base.kind, base.required, 'custom', (v) => base.validate(v), {
+      ...(rankMap === undefined ? {} : { rankMap }),
+      ...(element === undefined ? {} : { element }),
+      custom: resolver as unknown as CustomResolver,
+    }) as unknown as S;
+  },
+  /**
    * Creates a rank field specification that accepts only values from a predefined ordered list.
    * Concurrent values resolve to the highest rank in the list.
    * @param values An ordered list of distinct values.
@@ -152,6 +201,7 @@ export function defineCollection<const F extends Record<string, FieldSpec>>(defi
   readonly version: number;
   readonly fields: F;
   readonly migrations?: Readonly<Record<number, Migration>>;
+  readonly deletes?: DeleteOptions;
 }): CollectionDefinition<F> {
   const { name, version, fields } = definition;
   const migrations = definition.migrations ?? {};
@@ -176,7 +226,30 @@ export function defineCollection<const F extends Record<string, FieldSpec>>(defi
       );
     }
   }
-  return Object.freeze({ name, version, fields, migrations: Object.freeze({ ...migrations }) });
+  const base = { name, version, fields, migrations: Object.freeze({ ...migrations }) };
+  if (definition.deletes === undefined) return Object.freeze(base);
+  return Object.freeze({ ...base, deletes: checkDeleteOptions(name, definition.deletes) });
+}
+
+/** [ADV] Validates and freezes `deletes` options (D6, R6.9). */
+function checkDeleteOptions(collection: string, options: DeleteOptions): DeleteOptions {
+  const bad = (message: string): never => {
+    throw new WeaveError('VALIDATION_FAILED', `Collection "${collection}": ${message}`, {
+      details: { collection },
+    });
+  };
+  if (typeof options !== 'object' || options === null || Array.isArray(options))
+    bad('deletes must be an object');
+  for (const key of Object.keys(options))
+    if (key !== 'policy' && key !== 'restore') bad(`unknown deletes option "${key}"`);
+  const { policy, restore } = options;
+  if (policy !== undefined && policy !== 'delete-wins' && policy !== 'update-wins')
+    bad('deletes.policy must be "delete-wins" or "update-wins"');
+  if (restore !== undefined && typeof restore !== 'boolean') bad('deletes.restore must be boolean');
+  return Object.freeze({
+    ...(policy === undefined ? {} : { policy }),
+    ...(restore === undefined ? {} : { restore }),
+  });
 }
 
 function fail(
@@ -237,7 +310,17 @@ export function validateLocalWrite(
   }
   assertSupported(fields);
   const record = fields as Record<string, JsonValue>;
-  checkFieldTypes(definition, record);
+  // [ADV] Counter fields take a delta on writes; the engine turns it into a counter state.
+  const others: Record<string, JsonValue> = {};
+  for (const [name, value] of Object.entries(record)) {
+    if (definition.fields[name]?.kind !== 'counter') others[name] = value;
+    else if (!Number.isSafeInteger(value))
+      fail('VALIDATION_FAILED', `Counter field "${name}" takes a safe integer delta`, {
+        collection: definition.name,
+        field: name,
+      });
+  }
+  checkFieldTypes(definition, others);
   if (kind === 'create') {
     for (const [name, field] of Object.entries(definition.fields)) {
       if (field.required && !(name in record)) {

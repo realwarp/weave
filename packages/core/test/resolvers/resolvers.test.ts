@@ -98,8 +98,9 @@ const arbEntries = <V extends JsonValue>(value: fc.Arbitrary<V>) =>
     .map((list) => list.map((e) => entry(e.lamport, e.replicaId, e.seq, e.value)));
 
 describe('built-in resolvers', () => {
-  it('lists every MVP resolver', () => {
+  it('lists every MVP resolver plus the [ADV] counter (0.2.0, T5.4)', () => {
     expect([...RESOLVER_NAMES].sort()).toEqual([
+      'counter',
       'last-writer-wins',
       'max',
       'max-rank',

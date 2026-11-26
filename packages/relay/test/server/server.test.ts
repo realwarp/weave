@@ -99,6 +99,28 @@ describe('relay HTTP server', () => {
     }
   });
 
+  it('[ADV] T5.5: the pull `hold` flag must be a boolean', async () => {
+    const relay = await serve({});
+    try {
+      const base = { replicaId: 'a'.repeat(26), vector: {}, support: {}, limit: 1 };
+      for (const [hold, status] of [
+        ['yes', 400],
+        [1, 400],
+        [true, 200],
+        [false, 200],
+      ] as const) {
+        const res = await fetch(`${relay.url}/v1/pull`, {
+          method: 'POST',
+          body: JSON.stringify({ ...base, hold }),
+        });
+        expect(res.status).toBe(status);
+        await res.text();
+      }
+    } finally {
+      await relay.close();
+    }
+  });
+
   it('enforces the op limits over HTTP and stores nothing', async () => {
     const core = new RelayCore({ storage: memoryStorage(), limits: { maxOpsPerPush: 2 } });
     await core.open();

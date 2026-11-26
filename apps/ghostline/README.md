@@ -34,8 +34,22 @@ npx playwright test -c apps/ghostline/test/e2e   # browser smoke test
 |                 | `tags`      | union: no tag is lost                        |
 |                 | `claimedBy` | last writer wins: one claimant everywhere    |
 |                 | `state`     | `open` -> `fulfilled` (max-rank)             |
+|                 | `meToo`     | counter: every device's taps are summed      |
 
 A delete wins over a concurrent edit.
+
+## "Me too" counter and schema version 2 (0.2.0)
+
+Each open request has a **Me too (N)** button. Every tap adds one, and taps made on several
+devices at the same time all count (the counter resolver), so every device ends with the same
+total. A tap retried after a crash reuses its `mutationId` and counts once.
+
+Adding the counter moved `requests` from schema version 1 to version 2, with a migration that
+keeps every version 1 field unchanged. Version 1 requests created by GHOSTLINE 0.1.0 open as
+version 2 with no taps. A GHOSTLINE 0.1.0 device that syncs with a 0.2.0 one receives only what
+it can read and is told it needs an update (`PEER_SCHEMA_OLDER`); it does not reject the new
+field. Both paths are tested in `test/counter.test.ts`. The demo shows the counter but not a
+schema upgrade; FIELDNOTE's demo is the one that demonstrates schema evolution.
 
 ## Notices
 

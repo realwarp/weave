@@ -15,6 +15,8 @@ import {
   fulfilRequest,
   listAnnouncements,
   listRequests,
+  meToo,
+  meTooCount,
   notices,
   publishAnnouncement,
   tagRequest,
@@ -123,6 +125,7 @@ async function draw(): Promise<void> {
     if (r.value.state === 'open') {
       if (r.value.claimedBy !== device)
         li.append(button('Claim', () => claimRequest(session, r.id)));
+      li.append(button(`Me too (${meTooCount(r)})`, () => meToo(session, r.id)));
       li.append(
         button('Add tag', async () => {
           const tag = prompt('Tag')?.trim();

@@ -401,7 +401,7 @@ Steps:
 6. One read-write transaction puts `op/...`, `rop/...`, `rec/...`, `mut/<mutationId>` (`{payloadHash, opId, recordId}`) and `meta/state` (new vector, `maxLamport`, `commit + 1`). The transaction checks that `commit` still equals the value read in step 2; a mismatch aborts with `STORAGE_CONFLICT` and the engine retries from step 1.
 7. After commit: mark and emit notifications (6.1), then call subscribers with `source: 'local'`. Return `{recordId, opId, replayed: false}`.
 
-A crash before step 6 leaves nothing. A crash after step 6, including a crash before the result is returned to the caller, leaves a complete op, index, state, counters **and** the mutation record. The retry with the same `mutationId` finds the record in step 1 and returns the original result. `mut/` entries are kept as long as the op log is (MVP never compacts); [ADV] compaction removes a `mut/` entry together with its op.
+A crash before step 6 leaves nothing. A crash after step 6, including a crash before the result is returned to the caller, leaves a complete op, index, state, counters **and** the mutation record. The retry with the same `mutationId` finds the record in step 1 and returns the original result. `mut/` entries are never removed, including by [ADV] compaction: compaction may discard an op, but its `mut/` entry (`{payloadHash, opId, recordId}`) stays, and step 1 answers a retry from that entry alone, so the R5.4 guarantee has no compaction exception. Trade-off: `mut/` grows by one small entry per local write for the life of the replica, also when compaction runs; there is no expiry.
 
 ### 7.3 Apply path for received ops (R2.6, R2.7, R4.7, R4.10, R5)
 
@@ -892,7 +892,7 @@ Screens: inspections list, inspection detail with observations, conflict history
 
 | Feature | Room left in the MVP |
 |---|---|
-| Compaction, `removePeer` (R3.6 to R3.13) | `peer/` entries already hold ack vectors with the semantics of 10.3; relay registers members before sending data; `compactedThrough` is one more `meta/` key; op log is accessed only through `op/` keys; `mut/` entries are removed with their ops; `NEEDS_SNAPSHOT` is a reserved error code |
+| Compaction, `removePeer` (R3.6 to R3.13) | `peer/` entries already hold ack vectors with the semantics of 10.3; relay registers members before sending data; `compactedThrough` is one more `meta/` key; op log is accessed only through `op/` keys; `mut/` entries are kept when their ops are discarded (R5.4, 7.2); `NEEDS_SNAPSHOT` is a reserved error code |
 | Snapshot bootstrap (R4.8) | endpoints can add a `snapshot` method; no MVP code depends on its absence |
 | `restore`, `update-wins` (R6.9) | `kind` is a union that already names `restore`; `deriveRecord` step 2 is the only place that changes |
 | Counter and custom resolvers (R6.10) | the `Resolver` type and registry exist; only built-in names are enabled |

@@ -16,11 +16,15 @@ export interface OpPayload {
   readonly collection: string;
   /** The record ID being modified. */
   readonly recordId: string;
-  /** `restore` is reserved for [ADV] and is rejected with NOT_SUPPORTED in the MVP. */
-  readonly kind: 'set' | 'delete';
+  /**
+   * `set` or `delete`; [ADV] `restore` (0.2.0, D6) cancels every delete op of the record that
+   * happens before it. A `restore` is accepted only by collections that enable it
+   * (`deletes.restore`); elsewhere it is rejected with `NOT_SUPPORTED`.
+   */
+  readonly kind: 'set' | 'delete' | 'restore';
   /** The schema version of the record at the time of the operation. */
   readonly schemaVersion: number;
-  /** Field name to new value. Empty for `delete`. */
+  /** Field name to new value. Empty for `delete` and `restore`. */
   readonly fields: Readonly<Record<string, JsonValue>>;
 }
 
@@ -35,8 +39,8 @@ export interface Op extends OpPayload {
 export interface OpHistoryEntry {
   /** The identity of this operation. */
   readonly opId: OpId;
-  /** The kind of operation. */
-  readonly kind: 'set' | 'delete';
+  /** The kind of operation (`restore` only with the [ADV] feature). */
+  readonly kind: 'set' | 'delete' | 'restore';
   /** The Lamport timestamp of this operation. */
   readonly lamport: number;
   /** The schema version of the record at the time of the operation. */

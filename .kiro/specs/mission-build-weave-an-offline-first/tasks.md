@@ -487,7 +487,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 
 Each task is its own gate with an independent review. **The order of requirements section 3 is mandatory and is encoded in the Depends fields: T5.1 -> T5.2 -> T5.3 -> T5.4 -> T5.5 -> T5.6 -> T5.7 -> T5.8 -> T5.9.** (T5.9 also depends on T5.4 directly.) Every task below ends with a `Review:` line: an independent reviewer agent (Testing and QA) reads the actual code, runs the tests, and writes `docs/reviews/<task id>.md`; the task is not merged until that report records no open findings. Testing and QA owns `docs/reviews/**`.
 
-- [ ] **T5.1 [ADV] Compaction and `removePeer`**
+- [x] **T5.1 [ADV] Compaction and `removePeer`**
   - Owner (non-overlapping parts):
     - Synchronization: `packages/core/src/sync/compaction.ts` and `packages/core/test/sync/compaction*.test.ts`.
     - Relay: `packages/relay/src/core/compaction.ts` and `packages/relay/test/compaction/**` (relay-side horizon and `NEEDS_SNAPSHOT`).
@@ -498,7 +498,7 @@ Each task is its own gate with an independent review. **The order of requirement
   - Done when: the horizon comes from relay-published acknowledgements; offline and never-acknowledging members count as zero; `NEEDS_SNAPSHOT` is returned for ops below `compactedThrough`; the durable removed list works; compaction is off by default; the trust-assumption text is in ADR-0006; all compaction tests pass.
   - Review: independent reviewer agent (Testing and QA); report `docs/reviews/T5.1.md`; the task merges only after the report records no open findings.
 
-- [ ] **T5.2 [ADV] Snapshot bootstrap**
+- [x] **T5.2 [ADV] Snapshot bootstrap**
   - Owner (non-overlapping parts):
     - Synchronization: `packages/core/src/sync/snapshot.ts`, `packages/core/test/sync/snapshot*.test.ts`.
     - Relay: `packages/relay/src/core/snapshot.ts`, `packages/relay/test/snapshot/**`.
@@ -507,28 +507,28 @@ Each task is its own gate with an independent review. **The order of requirement
   - Done when: a new or removed-and-rejoined replica bootstraps from a snapshot with tombstones and then continues normal sync to equal hashes.
   - Review: independent reviewer agent (Testing and QA); report `docs/reviews/T5.2.md`; the task merges only after the report records no open findings.
 
-- [ ] **T5.3 [ADV] `restore` and `update-wins`**
+- [x] **T5.3 [ADV] `restore` and `update-wins`**
   - Owner: Conflict resolution.
   - Paths: `packages/core/src/state/derive.ts` (step 2 and policy), `packages/core/src/state/restore.ts`, `packages/core/test/state/restore*.test.ts`.
   - Depends: Gate 4, T5.2. Req: R6.9, D6, R15.9.
   - Done when: both are deterministic functions of the op set, pass order-independence and convergence properties, and `restore` is accepted only with the feature enabled.
   - Review: independent reviewer agent (Testing and QA); report `docs/reviews/T5.3.md`; the task merges only after the report records no open findings.
 
-- [ ] **T5.4 [ADV] Counter resolver and custom resolvers**
+- [x] **T5.4 [ADV] Counter resolver and custom resolvers**
   - Owner: Conflict resolution.
   - Paths: `packages/core/src/resolvers/counter.ts`, `packages/core/src/resolvers/custom.ts`, `packages/core/src/resolvers/assert.ts`, `packages/core/test/resolvers/counter*.test.ts`, `packages/core/test/resolvers/custom*.test.ts`.
   - Depends: Gate 4, T1.B1, T5.3. Req: R6.10, R15.9.
   - Done when: the counter resolver, custom registration and the exported `assertResolverDeterministic` helper pass the direct-call permutation tests. (The GHOSTLINE counter is T5.9.)
   - Review: independent reviewer agent (Testing and QA); report `docs/reviews/T5.4.md`; the task merges only after the report records no open findings.
 
-- [ ] **T5.5 [ADV] Held newer-schema ops**
+- [x] **T5.5 [ADV] Held newer-schema ops**
   - Owner: Core engine.
   - Paths: `packages/core/src/engine/held.ts`, `packages/core/test/engine/held*.test.ts`.
   - Depends: Gate 4, T5.4. Req: R8.7.
   - Done when: newer-version ops are stored but excluded from visible state, a status field reports that an update is needed, and they apply after an upgrade with equal hashes.
   - Review: independent reviewer agent (Testing and QA); report `docs/reviews/T5.5.md`; the task merges only after the report records no open findings.
 
-- [ ] **T5.6 [ADV] Authorization hook and authenticated identity**
+- [x] **T5.6 [ADV] Authorization hook and authenticated identity**
   - Owner (non-overlapping parts):
     - Synchronization (replica side): `packages/core/src/sync/authorize.ts`, `packages/core/test/sync/authorize*.test.ts`.
     - Relay (relay side): `packages/relay/src/core/authorize.ts`, `packages/relay/test/authorize/**`.
@@ -537,21 +537,21 @@ Each task is its own gate with an independent review. **The order of requirement
   - Done when: a hook is called before applying or sending ops and can reject; ops claiming a replica ID the authenticated sender may not write as are rejected with a typed error and no change; tests cover allow, deny and identity mismatch on both sides.
   - Review: independent reviewer agent (Testing and QA); report `docs/reviews/T5.6.md`; the task merges only after the report records no open findings.
 
-- [ ] **T5.7 [ADV] Peer ban**
+- [x] **T5.7 [ADV] Peer ban**
   - Owner: Synchronization.
   - Paths: `packages/core/src/sync/ban.ts`, `packages/core/test/sync/ban*.test.ts`.
   - Depends: Gate 4, T5.6 (uses `rejectedOrigins`). Req: R10.5.
   - Done when: a peer that repeatedly sends invalid data is refused for a configurable period using the monotonic timer; valid peers are unaffected; tests use the fake scheduler.
   - Review: independent reviewer agent (Testing and QA); report `docs/reviews/T5.7.md`; the task merges only after the report records no open findings.
 
-- [ ] **T5.8 [ADV] WebSocket transport and direct network sync**
+- [x] **T5.8 [ADV] WebSocket transport and direct network sync**
   - Owner: Synchronization.
   - Paths: `packages/transport/src/websocket/**`, `packages/transport/test/websocket/**`.
   - Depends: Gate 4, T5.7. Req: R4.4, R9.5.
   - Done when: the WebSocket adapter passes the transport conformance suite; two replicas sync directly over the network with the same protocol and reach a verified `complete`.
   - Review: independent reviewer agent (Testing and QA); report `docs/reviews/T5.8.md`; the task merges only after the report records no open findings.
 
-- [ ] **T5.9 [ADV] GHOSTLINE "me too" counter**
+- [x] **T5.9 [ADV] GHOSTLINE "me too" counter**
   - Owner: GHOSTLINE.
   - Paths: `apps/ghostline/src/model.ts`, `apps/ghostline/src/logic.ts`, `apps/ghostline/src/app.ts`, `apps/ghostline/test/counter*.test.ts`.
   - Depends: T5.4, T5.8. Req: R13.7.

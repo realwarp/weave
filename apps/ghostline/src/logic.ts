@@ -89,6 +89,22 @@ export async function tagRequest(s: Session, id: string, add: string[]): Promise
   );
 }
 
+/**
+ * Adds one "me too" to a request (R13.7). Taps on several devices at the same time all count:
+ * the field uses the counter resolver. A retry of the same unfinished tap reuses its mutationId,
+ * so a crash never counts a tap twice.
+ */
+export function meToo(s: Session, id: string): Promise<WriteResult> {
+  return runAction(s.replica, s.pending, `metoo:${id}`, (mutationId) =>
+    req(s).update(id, { meToo: 1 }, { mutationId }),
+  );
+}
+
+/** The number of "me too" taps on a request (0 when nobody tapped). */
+export function meTooCount(r: RecordView<HelpRequest>): number {
+  return r.value.meToo ?? 0;
+}
+
 export function fulfilRequest(s: Session, id: string): Promise<WriteResult> {
   return runAction(s.replica, s.pending, `fulfil:${id}`, (mutationId) =>
     req(s).update(id, { state: 'fulfilled' }, { mutationId }),

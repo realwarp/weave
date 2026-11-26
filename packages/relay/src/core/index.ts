@@ -20,17 +20,23 @@ import {
   selectReadablePrefix,
   verifyOpLine,
   type AckRequest,
+  type AuthContext,
+  type AuthorizeHook,
   type PullRequest,
   type PullResponse,
   type PushRequest,
   type PushResponse,
   type Random,
   type ReplicaId,
+  type Snapshot,
   type StorageAdapter,
   type StorageTx,
   type SyncEndpoint,
   type VersionVector,
 } from '@weave/core/protocol';
+import { assertIdentity, authorizePullSend, authorizePush } from './authorize.js';
+import { computeHorizon } from './compaction.js';
+import { SNAPSHOT_KEY, checkUpload, readSnapshot, supersedes } from './snapshot.js';
 
 export interface RelayLimits {
   /** Maximum ops in one push (default 500). */
@@ -55,6 +61,14 @@ export interface RelayCoreOptions {
   readonly unsafeDisableQueue?: boolean;
   /** TEST ONLY: disable the in-transaction identity re-check (to prove the queue alone is enough). */
   readonly unsafeDisableRecheck?: boolean;
+  /** Compaction options (off by default). */
+  readonly compaction?: { enabled: boolean };
+  /**
+   * [ADV] Authorization hook (R16.4): called before a push is stored (`apply`) and before a pull
+   * is answered (`send`), with op envelopes only. Anything but `true` denies with
+   * `UNAUTHORIZED` and nothing changes. Absent: allow all (0.1.0).
+   */
+  readonly authorize?: AuthorizeHook;
 }
 
 interface RelayState {
@@ -66,7 +80,13 @@ interface MemberEntry {
   readonly ackVector: VersionVector;
 }
 
+interface CompactionState {
+  readonly compactedThrough: VersionVector;
+  readonly removed: Readonly<Record<ReplicaId, number>>;
+}
+
 const STATE_KEY = 'meta/relay';
+const COMPACTED_KEY = 'meta/compaction';
 
 class Queue {
   private tail: Promise<void> = Promise.resolve();
@@ -85,6 +105,13 @@ async function readState(tx: StorageTx): Promise<RelayState> {
   return text === undefined ? { vector: {}, commit: 0 } : (JSON.parse(text) as RelayState);
 }
 
+async function readCompaction(tx: StorageTx): Promise<CompactionState> {
+  const text = await tx.get(COMPACTED_KEY);
+  return text === undefined
+    ? { compactedThrough: {}, removed: {} }
+    : (JSON.parse(text) as CompactionState);
+}
+
 async function readMember(tx: StorageTx, id: ReplicaId): Promise<MemberEntry | undefined> {
   const text = await tx.get(keys.peer(id));
   return text === undefined ? undefined : (JSON.parse(text) as MemberEntry);
@@ -100,9 +127,11 @@ export class RelayCore implements SyncEndpoint {
   private readonly queue = new Queue();
   private readonly limits: RelayLimits;
   private relayId: ReplicaId | undefined;
+  private readonly compactionEnabled: boolean;
 
   constructor(private readonly options: RelayCoreOptions) {
     this.limits = { ...DEFAULT_LIMITS, ...options.limits };
+    this.compactionEnabled = options.compaction?.enabled ?? false;
   }
 
   get storage(): StorageAdapter {
@@ -125,6 +154,7 @@ export class RelayCore implements SyncEndpoint {
     await this.storage.transaction('rw', async (tx) => {
       tx.put(keys.metaReplica, JSON.stringify({ replicaId: id }));
       tx.put(STATE_KEY, JSON.stringify({ vector: {}, commit: 0 }));
+      tx.put(COMPACTED_KEY, JSON.stringify({ compactedThrough: {}, removed: {} }));
     });
     this.relayId = id;
   }
@@ -143,20 +173,193 @@ export class RelayCore implements SyncEndpoint {
     return this.storage.transaction('ro', async (tx) => (await readMember(tx, id))?.ackVector);
   }
 
-  private register(id: ReplicaId): Promise<void> {
+  /** Records `id` as a member if it is not one yet. Returns true when this call created it. */
+  private register(id: ReplicaId): Promise<boolean> {
     return this.storage.transaction('rw', async (tx) => {
-      if ((await readMember(tx, id)) === undefined)
-        tx.put(keys.peer(id), JSON.stringify({ ackVector: {} }));
+      if ((await readMember(tx, id)) !== undefined) return false;
+      tx.put(keys.peer(id), JSON.stringify({ ackVector: {} }));
+      return true;
     });
   }
 
-  async pull(request: PullRequest): Promise<PullResponse> {
-    await this.register(request.replicaId); // membership before any data is returned (R3.6)
-    const vector = await this.vector();
+  /**
+   * Undoes a registration this pull made, when its answer is then denied: the entry is removed
+   * only if it still has an empty acknowledgement (nothing else used it since).
+   */
+  private unregisterIfUnused(id: ReplicaId): Promise<void> {
+    return this.storage.transaction('rw', async (tx) => {
+      const member = await readMember(tx, id);
+      if (member !== undefined && Object.keys(member.ackVector).length === 0)
+        tx.delete(keys.peer(id));
+    });
+  }
+
+  /** The horizon of compaction: for each origin, the min of member acks capped by relay vector. */
+  async horizon(): Promise<VersionVector> {
+    const [state, compaction, members] = await this.storage.transaction('ro', async (tx) => {
+      const s = await readState(tx);
+      const c = await readCompaction(tx);
+      const members = new Map<ReplicaId, VersionVector>();
+      const cursor = await tx.scan(keys.peerPrefix);
+      for (const [k, v] of cursor) {
+        const id = k.substring(keys.peerPrefix.length);
+        members.set(id, (JSON.parse(v) as MemberEntry).ackVector);
+      }
+      return [s, c, members];
+    });
+    return computeHorizon(state.vector, members, compaction.removed);
+  }
+
+  /** Current compaction state. */
+  async compactionInfo(): Promise<{
+    horizon: VersionVector;
+    compactedThrough: VersionVector;
+    removed: Record<ReplicaId, number>;
+  }> {
+    const [state, compaction, members] = await this.storage.transaction('ro', async (tx) => {
+      const s = await readState(tx);
+      const c = await readCompaction(tx);
+      const members = new Map<ReplicaId, VersionVector>();
+      const cursor = await tx.scan(keys.peerPrefix);
+      for (const [k, v] of cursor) {
+        const id = k.substring(keys.peerPrefix.length);
+        members.set(id, (JSON.parse(v) as MemberEntry).ackVector);
+      }
+      return [s, c, members];
+    });
+    const horizon = computeHorizon(state.vector, members, compaction.removed);
+    return {
+      horizon,
+      compactedThrough: compaction.compactedThrough,
+      removed: { ...compaction.removed },
+    };
+  }
+
+  /** Perform compaction: delete ops <= horizon and advance compactedThrough. */
+  async compact(): Promise<{ removedOps: number; compactedThrough: VersionVector }> {
+    if (!this.compactionEnabled) {
+      throw new WeaveError('NOT_SUPPORTED', 'Compaction is disabled');
+    }
+
+    // Through the push queue, so no push runs between reading the horizon and deleting; the commit
+    // counter rises so a push that read the state earlier retries instead of trusting stale reads.
+    return this.queue.run(() => this.compactLocked());
+  }
+
+  private async compactLocked(): Promise<{ removedOps: number; compactedThrough: VersionVector }> {
+    const result = await this.storage.transaction('rw', async (tx) => {
+      const state = await readState(tx);
+      const compaction = await readCompaction(tx);
+      const members = new Map<ReplicaId, VersionVector>();
+      const cursor = await tx.scan(keys.peerPrefix);
+      for (const [k, v] of cursor) {
+        const id = k.substring(keys.peerPrefix.length);
+        members.set(id, (JSON.parse(v) as MemberEntry).ackVector);
+      }
+
+      const horizon = computeHorizon(state.vector, members, compaction.removed);
+      let removedOps = 0;
+
+      // Scan all op keys and delete those <= horizon
+      const opCursor = await tx.scan('op/');
+      for (const [key] of opCursor) {
+        const match = key.match(/^op\/([^/]+)\/(\d+)$/);
+        if (match && match[1] && match[2]) {
+          const origin = match[1];
+          const seq = parseInt(match[2], 10);
+          const horizonSeq = horizon[origin] ?? 0;
+          if (seq <= horizonSeq) {
+            tx.delete(key);
+            removedOps++;
+          }
+        }
+      }
+
+      // Update compactedThrough
+      const newCompactedThrough: Record<string, number> = { ...compaction.compactedThrough };
+      for (const [origin, horizonSeq] of Object.entries(horizon)) {
+        const existing = newCompactedThrough[origin] ?? 0;
+        if (horizonSeq > existing) {
+          newCompactedThrough[origin] = horizonSeq;
+        }
+      }
+      const normalizedCompactedThrough = normalizeVector(newCompactedThrough);
+
+      tx.put(
+        COMPACTED_KEY,
+        JSON.stringify({
+          compactedThrough: normalizedCompactedThrough,
+          removed: compaction.removed,
+        }),
+      );
+      if (removedOps > 0)
+        tx.put(
+          STATE_KEY,
+          JSON.stringify({ ...state, commit: state.commit + 1 } satisfies RelayState),
+        );
+
+      return { removedOps, compactedThrough: normalizedCompactedThrough };
+    });
+
+    return result;
+  }
+
+  /**
+   * Serves a pull. [ADV] `auth` is the caller as authenticated by the server (R16.3), never
+   * taken from the request; it must be allowed to act as `request.replicaId`.
+   */
+  async pull(request: PullRequest, auth?: AuthContext): Promise<PullResponse> {
+    assertIdentity(auth, request.replicaId); // before membership is recorded
+    const hook = this.options.authorize;
+    // [ADV] With a hook, a first selection is authorized BEFORE membership is recorded, so a
+    // denied pull writes nothing. The answer is then selected again after registration (R3.6
+    // order); if it changed in between, the new selection is authorized too.
+    const first = hook === undefined ? undefined : await this.preparePull(request);
+    if (first !== undefined)
+      await authorizePullSend(hook, request.replicaId, first.selected.lines, auth);
+    const created = await this.register(request.replicaId); // membership before data (R3.6)
+    const { vector, compaction, selected } = await this.preparePull(request);
+    if (
+      first !== undefined &&
+      JSON.stringify(first.selected.lines) !== JSON.stringify(selected.lines)
+    ) {
+      try {
+        await authorizePullSend(hook, request.replicaId, selected.lines, auth);
+      } catch (e) {
+        // A denied pull writes nothing (F3): undo a membership this pull created, so a rejected
+        // caller never holds back the compaction horizon with an empty acknowledgement.
+        if (created) await this.unregisterIfUnused(request.replicaId);
+        throw e;
+      }
+    }
+    return {
+      endpointId: this.endpointId,
+      durable: vector,
+      support: '*',
+      ops: selected.lines,
+      blocked: selected.blocked,
+      more: selected.more,
+      compaction: {
+        horizon: await this.horizon(),
+        compactedThrough: compaction.compactedThrough,
+        removed: { ...compaction.removed },
+      },
+    };
+  }
+
+  /** Reads the relay state and selects a pull's answer; throws NEEDS_SNAPSHOT (R3.9). */
+  private async preparePull(request: PullRequest) {
+    const [vector, compaction] = await this.storage.transaction('ro', async (tx) => {
+      const s = await readState(tx);
+      const c = await readCompaction(tx);
+      return [s.vector, c];
+    });
+
     const selected = await selectReadablePrefix({
       senderVector: vector,
       peerVector: request.vector,
-      support: request.support,
+      // [ADV] A holding puller (R8.7) takes every op; the relay still reads only envelopes.
+      support: request.hold === true ? '*' : request.support,
       limit: Math.min(Math.max(0, request.limit), this.limits.maxOpsPerPull),
       direction: 'pull',
       ...(request.origins === undefined ? {} : { origins: request.origins }),
@@ -178,29 +381,46 @@ export class RelayCore implements SyncEndpoint {
           });
         }),
     });
-    return {
-      endpointId: this.endpointId,
-      durable: vector,
-      support: '*',
-      ops: selected.lines,
-      blocked: selected.blocked,
-      more: selected.more,
-    };
+
+    // Check for NEEDS_SNAPSHOT: if puller is behind compactedThrough for any origin they'd receive
+    if (request.limit > 0) {
+      const wanted = request.origins === undefined ? undefined : new Set(request.origins);
+      for (const origin of Object.keys(vector)) {
+        if (wanted !== undefined && !wanted.has(origin)) continue;
+        if (vector[origin]! > (request.vector[origin] ?? 0)) {
+          const compacted = compaction.compactedThrough[origin] ?? 0;
+          if ((request.vector[origin] ?? 0) < compacted) {
+            throw new WeaveError('NEEDS_SNAPSHOT', 'History has been compacted for this origin', {
+              details: { origin, compactedThrough: compacted },
+            });
+          }
+        }
+      }
+    }
+
+    return { vector, compaction, selected };
   }
 
-  push(request: PushRequest): Promise<PushResponse> {
-    const run = () => this.pushLocked(request);
+  /**
+   * Stores a push atomically. [ADV] `auth` (R16.3) must be allowed to act as the claimed
+   * `replicaId` and as the origin of every op; the hook (R16.4) must allow the batch.
+   */
+  push(request: PushRequest, auth?: AuthContext): Promise<PushResponse> {
+    const run = () => this.pushLocked(request, auth);
     return this.options.unsafeDisableQueue === true ? run() : this.queue.run(run);
   }
 
-  private async pushLocked(request: PushRequest): Promise<PushResponse> {
+  private async pushLocked(request: PushRequest, auth?: AuthContext): Promise<PushResponse> {
     if (request.ops.length > this.limits.maxOpsPerPush) {
       throw new WeaveError(
         'VALIDATION_FAILED',
         `A push may carry at most ${this.limits.maxOpsPerPush} ops`,
       );
     }
+    // [ADV] Identity and hook decide before anything is written, membership included.
+    await authorizePush(this.options.authorize, request.replicaId, request.ops, auth);
     await this.register(request.replicaId);
+
     // Phase A1: verify every line; any failure rejects the whole push.
     const verified = [];
     for (const line of request.ops)
@@ -215,12 +435,19 @@ export class RelayCore implements SyncEndpoint {
         throw integrity(v.op.replicaId, v.op.seq);
       if (prior === undefined) byId.set(key, v);
     }
-    const { state, stored } = await this.storage.transaction('ro', async (tx) => {
+    const { state, stored, compaction } = await this.storage.transaction('ro', async (tx) => {
       const s = await readState(tx);
+      const c = await readCompaction(tx);
       const m = new Map<string, string | undefined>();
       for (const [key, v] of byId) m.set(key, await tx.get(keys.op(v.op.replicaId, v.op.seq)));
-      return { state: s, stored: m };
+      return { state: s, stored: m, compaction: c };
     });
+    // [ADV] A removed member may not push at all (R3.10).
+    if (compaction.removed[request.replicaId] !== undefined) {
+      throw new WeaveError('PEER_REMOVED', 'This peer has been removed', {
+        details: { replicaId: request.replicaId, removedAt: compaction.removed[request.replicaId] },
+      });
+    }
     for (const [key, v] of byId) {
       const line = stored.get(key);
       if (line !== undefined && readEnvelope(line).hash !== v.op.hash)
@@ -260,6 +487,17 @@ export class RelayCore implements SyncEndpoint {
     }
 
     const nextState: RelayState = { vector: normalizeVector(vector), commit: state.commit + 1 };
+
+    // [ADV] Ops a removed member wrote after its removal are refused, whoever relays them (R3.10).
+    for (const v of accepted) {
+      const removedAt = compaction.removed[v.op.replicaId];
+      if (removedAt !== undefined && v.op.seq > removedAt) {
+        throw new WeaveError('PEER_REMOVED', 'Ops from a removed peer are not allowed', {
+          details: { replicaId: v.op.replicaId, seq: v.op.seq, removedAt },
+        });
+      }
+    }
+
     await this.storage.transaction('rw', async (tx) => {
       if (this.options.unsafeDisableRecheck !== true) {
         const current = await readState(tx);
@@ -284,7 +522,9 @@ export class RelayCore implements SyncEndpoint {
     return { durable: nextState.vector, rejected: [], need, blocked: [] };
   }
 
-  async ack(request: AckRequest): Promise<void> {
+  /** Records an acknowledgement. [ADV] `auth` must be allowed to act as `request.replicaId`. */
+  async ack(request: AckRequest, auth?: AuthContext): Promise<void> {
+    assertIdentity(auth, request.replicaId);
     await this.storage.transaction('rw', async (tx) => {
       const member = (await readMember(tx, request.replicaId)) ?? { ackVector: {} };
       tx.put(
@@ -292,5 +532,88 @@ export class RelayCore implements SyncEndpoint {
         JSON.stringify({ ackVector: mergeVectors(member.ackVector, request.durable) }),
       );
     });
+  }
+
+  /** [ADV] The stored snapshot for bootstrapping (R4.8); `NOT_SUPPORTED` when none is stored. */
+  async snapshot(): Promise<Snapshot> {
+    const stored = await this.storage.transaction('ro', (tx) => readSnapshot(tx));
+    if (stored === undefined)
+      throw new WeaveError(
+        'NOT_SUPPORTED',
+        'This relay holds no snapshot; ask a member to upload one',
+      );
+    return stored;
+  }
+
+  /**
+   * [ADV] Stores a snapshot uploaded by a member. It must be intact and cover the relay's
+   * discarded history; it replaces the stored one only if it holds at least as much.
+   */
+  putSnapshot(snapshot: Snapshot, auth?: AuthContext): Promise<void> {
+    // [ADV] R16.3: an authenticated caller uploads only a snapshot it may act as the source of.
+    try {
+      if (auth !== undefined)
+        assertIdentity(auth, String((snapshot as { source?: unknown }).source));
+    } catch (e) {
+      return Promise.reject(e as Error);
+    }
+    return this.queue.run(async () => {
+      const compaction = await this.storage.transaction('ro', (tx) => readCompaction(tx));
+      const checked = await checkUpload(
+        snapshot,
+        compaction.compactedThrough,
+        this.limits.maxOpBytes,
+      );
+      await this.storage.transaction('rw', async (tx) => {
+        if (supersedes(checked, await readSnapshot(tx)))
+          tx.put(SNAPSHOT_KEY, JSON.stringify(checked));
+      });
+    });
+  }
+
+  /**
+   * [ADV] This relay as a `SyncEndpoint` bound to an authenticated caller (R16.3), for
+   * in-process use. The identity is fixed here and never read from a request, like the HTTP
+   * server's token-to-identity mapping.
+   */
+  endpoint(options: { readonly auth?: AuthContext } = {}): SyncEndpoint {
+    const auth = options.auth;
+    return {
+      pull: (request) => this.pull(request, auth),
+      push: (request) => this.push(request, auth),
+      ack: (request) => this.ack(request, auth),
+      snapshot: () => this.snapshot(),
+      putSnapshot: (snapshot) => this.putSnapshot(snapshot, auth),
+    };
+  }
+
+  /**
+   * Mark a peer as removed. Idempotent: first value kept. Runs through the push queue, like
+   * compaction, so it never lands between a push's read of the removed list and its commit, and
+   * it raises the commit counter so a push that read the state earlier fails its re-check (F4).
+   */
+  removePeer(id: ReplicaId): Promise<void> {
+    return this.queue.run(() =>
+      this.storage.transaction('rw', async (tx) => {
+        const compaction = await readCompaction(tx);
+        const state = await readState(tx);
+
+        // First value kept (idempotent)
+        if (compaction.removed[id] === undefined) {
+          const lastSeq = state.vector[id] ?? 0;
+          tx.put(
+            COMPACTED_KEY,
+            JSON.stringify({
+              compactedThrough: compaction.compactedThrough,
+              removed: { ...compaction.removed, [id]: lastSeq },
+            }),
+          );
+          tx.put(
+            STATE_KEY,
+            JSON.stringify({ ...state, commit: state.commit + 1 } satisfies RelayState),
+          );
+        }
+      }),
+    );
   }
 }

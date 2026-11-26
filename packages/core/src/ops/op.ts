@@ -32,11 +32,11 @@ export interface BuildOpInput {
   readonly collection: string;
   /** The record ID being modified. */
   readonly recordId: string;
-  /** The kind of operation: 'set' or 'delete'. */
-  readonly kind: 'set' | 'delete';
+  /** The kind of operation: 'set', 'delete' or [ADV] 'restore'. */
+  readonly kind: 'set' | 'delete' | 'restore';
   /** The schema version of the record. */
   readonly schemaVersion: number;
-  /** Field name to new value. Empty for `delete`. */
+  /** Field name to new value. Empty for `delete` and `restore`. */
   readonly fields: Readonly<Record<string, JsonValue>>;
   /** Wall-clock time of the write (display only). */
   readonly wallTime?: number;
@@ -66,7 +66,7 @@ export async function buildOp(input: BuildOpInput): Promise<{
     recordId: input.recordId,
     kind: input.kind,
     schemaVersion: input.schemaVersion,
-    fields: input.kind === 'delete' ? {} : input.fields,
+    fields: input.kind === 'set' ? input.fields : {},
   };
   validatePayloadShape(payload);
   const hash = await opHash(payload);
@@ -125,13 +125,11 @@ function validatePayloadShape(p: {
   if (typeof p.recordId !== 'string' || !RECORD_ID_PATTERN.test(p.recordId)) {
     invalid('Invalid recordId', { recordId: p.recordId });
   }
-  if (p.kind === 'restore') {
-    throw new WeaveError(
-      'NOT_SUPPORTED',
-      'The restore op kind is an [ADV] feature and is not supported',
-    );
+  // `restore` (0.2.0, D6) is structurally valid; whether a collection accepts it is checked by
+  // the engine, which rejects it with NOT_SUPPORTED unless the collection enables restore.
+  if (p.kind !== 'set' && p.kind !== 'delete' && p.kind !== 'restore') {
+    invalid('Invalid op kind', { kind: p.kind });
   }
-  if (p.kind !== 'set' && p.kind !== 'delete') invalid('Invalid op kind', { kind: p.kind });
   if (!isPositiveInt(p.schemaVersion))
     invalid('Invalid schemaVersion', { schemaVersion: p.schemaVersion });
   if (!isPlainObject(p.context)) invalid('context must be an object');
@@ -150,8 +148,8 @@ function validatePayloadShape(p: {
       invalid('Invalid field name', { name });
     }
   }
-  if (p.kind === 'delete' && Object.keys(p.fields).length > 0) {
-    invalid('A delete op must have empty fields');
+  if (p.kind !== 'set' && Object.keys(p.fields).length > 0) {
+    invalid(`A ${String(p.kind)} op must have empty fields`);
   }
   assertSupported(p.fields);
 }
