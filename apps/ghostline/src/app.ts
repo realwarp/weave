@@ -75,11 +75,39 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 // ---------------------------------------------------------------- status
 
-type SyncState = 'ready' | 'syncing' | 'synced' | 'partial' | 'error';
+type SyncState = 'ready' | 'syncing' | 'synced' | 'partial' | 'offline' | 'error';
 
-function status(text: string, state: SyncState): void {
+/** Plain words for neighbours; the technical detail stays one click away for debugging. */
+const MESSAGES = {
+  ready: 'Ready. Your changes are saved on this device.',
+  offline: "You're offline. Changes are saved on this device.",
+  backOnline: 'Back online. Press Sync to share your changes.',
+  syncing: 'Sharing your changes...',
+  synced: 'Up to date.',
+  failed: "Couldn't sync. Your changes are still saved here. Try again.",
+  schemaOlder: 'Partly shared. Some changes need a newer version of the app.',
+  notSettled: 'Still catching up. Press Sync again to finish.',
+  actionFailed: "That didn't work. Please try again.",
+} as const;
+
+function status(text: string, state: SyncState, detail?: string): void {
   $('status').textContent = text;
   $('sync-state').dataset['state'] = state;
+  const toggle = $<HTMLButtonElement>('sync-detail-toggle');
+  const box = $('sync-detail');
+  box.textContent = detail ?? '';
+  box.hidden = true;
+  toggle.hidden = detail === undefined;
+  toggle.setAttribute('aria-expanded', 'false');
+  toggle.textContent = 'Details';
+}
+
+function errorDetail(e: unknown): string {
+  if (e instanceof Error) {
+    const code = (e as { code?: unknown }).code;
+    return typeof code === 'string' ? `${code}: ${e.message}` : e.message;
+  }
+  return String(e);
 }
 
 async function act(fn: () => Promise<unknown>, source?: HTMLButtonElement): Promise<void> {
@@ -88,7 +116,7 @@ async function act(fn: () => Promise<unknown>, source?: HTMLButtonElement): Prom
     await fn();
     await render();
   } catch (e) {
-    status(`Error: ${e instanceof Error ? e.message : String(e)}`, 'error');
+    status(MESSAGES.actionFailed, 'error', errorDetail(e));
   } finally {
     if (source !== undefined && source.isConnected) source.disabled = false;
   }
@@ -487,31 +515,59 @@ syncButton.addEventListener(
   () =>
     void act(async () => {
       syncButton.setAttribute('aria-busy', 'true');
-      status('Syncing...', 'syncing');
+      status(MESSAGES.syncing, 'syncing');
       try {
         const r = await replica.sync(relay);
+        const detail = `sync ${r.status}${'code' in r ? ` ${String(r.code)}` : ''}`;
         if (r.status === 'complete') {
-          status('Synced.', 'synced');
+          // `complete` means both sides were verified to hold the same changes (design 8.2).
+          status(MESSAGES.synced, 'synced');
           $('sync-state').title = `Last synced at ${new Date().toLocaleTimeString()}`;
+        } else if (r.status === 'partial') {
+          status(
+            r.code === 'PEER_SCHEMA_OLDER' ? MESSAGES.schemaOlder : MESSAGES.notSettled,
+            'partial',
+            detail,
+          );
         } else {
           status(
-            `Sync ${r.status}${'code' in r ? `: ${String(r.code)}` : ''}`,
-            r.status === 'partial' ? 'partial' : 'error',
+            navigator.onLine ? MESSAGES.failed : MESSAGES.offline,
+            navigator.onLine ? 'error' : 'offline',
+            detail,
           );
         }
+      } catch (e) {
+        // Nothing local is lost when a sync fails: every change was committed before it ran.
+        status(
+          navigator.onLine ? MESSAGES.failed : MESSAGES.offline,
+          navigator.onLine ? 'error' : 'offline',
+          errorDetail(e),
+        );
       } finally {
         syncButton.removeAttribute('aria-busy');
       }
     }, syncButton),
 );
 
-function showNetwork(): void {
-  document.body.dataset['online'] = String(navigator.onLine);
+const detailToggle = $<HTMLButtonElement>('sync-detail-toggle');
+detailToggle.addEventListener('click', () => {
+  const box = $('sync-detail');
+  box.hidden = !box.hidden;
+  detailToggle.setAttribute('aria-expanded', String(!box.hidden));
+  detailToggle.textContent = box.hidden ? 'Details' : 'Hide details';
+});
+
+function showNetwork(event?: Event): void {
+  const online = navigator.onLine;
+  document.body.dataset['online'] = String(online);
+  if (!online) status(MESSAGES.offline, 'offline');
+  else if (event !== undefined && $('sync-state').dataset['state'] === 'offline')
+    status(MESSAGES.backOnline, 'ready');
 }
 addEventListener('online', showNetwork);
 addEventListener('offline', showNetwork);
-showNetwork();
 
 replica.subscribe(() => void render());
 await render();
-status('Offline-ready. Press Sync to exchange changes.', 'ready');
+status(MESSAGES.ready, 'ready');
+showNetwork();

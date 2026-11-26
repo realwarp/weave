@@ -12,7 +12,7 @@
     <title>Ghostline</title>
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f4a37'/%3E%3Cpath d='M10 24V14.5a6 6 0 0 1 12 0V24l-3-2-3 2-3-2Z' fill='%23f5efe3'/%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='9' fill='%23f5efe3'/%3E%3Cg fill='none' stroke='%231f4a37' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M27.07 11.57A11 11 0 1 0 13.69 29.01'/%3E%3Cpath d='M18.09 30.83A11 11 0 0 0 31 20H22.5'/%3E%3C/g%3E%3Cg fill='%231f4a37'%3E%3Ccircle cx='27.07' cy='11.57' r='2.8'/%3E%3Ccircle cx='13.69' cy='29.01' r='2.4'/%3E%3Ccircle cx='18.09' cy='30.83' r='2.4'/%3E%3Ccircle cx='22.5' cy='20' r='2.8'/%3E%3C/g%3E%3C/svg%3E"
     />
     <style>
       /*
@@ -118,32 +118,61 @@
         align-items: flex-end;
         justify-content: space-between;
         gap: 24px;
-        padding-bottom: 18px;
-        border-bottom: 3px double var(--ink);
+        padding-bottom: 16px;
+      }
+      .mark {
+        color: var(--green);
+        flex: none;
       }
       .wordmark {
         display: flex;
         align-items: center;
-        gap: 14px;
+        gap: 16px;
       }
-      .wordmark svg {
-        width: 40px;
-        height: 40px;
-        flex: none;
+      .wordmark .mark {
+        width: 52px;
+        height: 52px;
       }
       .wordmark h1 {
         font-family: var(--serif);
         font-size: 44px;
         font-weight: 700;
-        letter-spacing: -0.015em;
+        letter-spacing: -0.01em;
         line-height: 1;
       }
       .wordmark p {
-        margin-top: 6px;
+        margin-top: 7px;
         font-family: var(--serif);
         font-style: italic;
         font-size: 16px;
         color: var(--ink-2);
+      }
+      /* The masthead rule repeats the mark's idea: a line, a break, and the line carrying on. */
+      .line-rule {
+        display: flex;
+        align-items: center;
+        height: 10px;
+      }
+      .line-rule .seg {
+        height: 2px;
+        background: var(--ink);
+      }
+      .line-rule .long {
+        flex: 1;
+      }
+      .line-rule .short {
+        width: 64px;
+      }
+      .line-rule .node {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--green);
+        flex: none;
+      }
+      .line-rule .gap {
+        width: 22px;
+        flex: none;
       }
       .dateline {
         text-align: right;
@@ -221,52 +250,91 @@
         color: var(--ink-2);
         min-width: 0;
       }
-      .sync-state .mark {
-        width: 9px;
-        height: 9px;
+      /* Two points and the line between them: joined when up to date, broken when offline. */
+      .sync-state .link {
+        width: 30px;
+        height: 12px;
         flex: none;
-        border-radius: 2px;
-        background: var(--ink-3);
+        overflow: visible;
+      }
+      .link .wire {
+        stroke: var(--ink-3);
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-dasharray: 2 4;
+      }
+      .link .end {
+        fill: var(--ink-3);
       }
       #status {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
       }
-      .sync-state[data-state='syncing'] .mark,
-      .sync-state[data-state='synced'] .mark {
-        background: var(--green);
+      .sync-state[data-state='synced'],
+      .sync-state[data-state='syncing'] {
+        color: var(--green);
       }
       .sync-state[data-state='synced'] {
-        color: var(--green);
         font-weight: 600;
       }
-      .sync-state[data-state='syncing'] .mark {
-        animation: blink 0.9s steps(2, start) infinite;
+      .sync-state[data-state='synced'] .wire,
+      .sync-state[data-state='syncing'] .wire {
+        stroke: var(--green);
+        stroke-dasharray: none;
       }
-      .sync-state[data-state='partial'] .mark,
-      .sync-state[data-state='error'] .mark {
-        background: var(--terra);
+      .sync-state[data-state='synced'] .end,
+      .sync-state[data-state='syncing'] .end {
+        fill: var(--green);
       }
+      .sync-state[data-state='syncing'] .wire {
+        stroke-dasharray: 4 3;
+        animation: flow 0.8s linear infinite;
+      }
+      @keyframes flow {
+        to {
+          stroke-dashoffset: -7;
+        }
+      }
+      .sync-state[data-state='offline'],
       .sync-state[data-state='error'],
       .sync-state[data-state='partial'] {
         color: var(--terra);
         font-weight: 600;
       }
-      @keyframes blink {
-        to {
-          visibility: hidden;
-        }
+      .sync-state[data-state='offline'] .end,
+      .sync-state[data-state='error'] .end,
+      .sync-state[data-state='partial'] .end {
+        fill: var(--terra);
       }
-      .offline-note {
-        display: none;
-        font-size: 14px;
+      .sync-state[data-state='offline'] .wire,
+      .sync-state[data-state='error'] .wire,
+      .sync-state[data-state='partial'] .wire {
+        stroke: var(--terra);
+        stroke-dasharray: 6 8;
+        stroke-dashoffset: -1;
+      }
+      .detail-toggle {
+        flex: none;
+        min-height: 32px;
+        padding: 0 4px;
+        border: 0;
+        background: none;
+        font-size: 13px;
         font-weight: 600;
-        color: var(--terra);
-        white-space: nowrap;
+        color: var(--ink-2);
+        text-decoration: underline;
+        text-underline-offset: 3px;
+        cursor: pointer;
       }
-      body[data-online='false'] .offline-note {
-        display: inline;
+      .sync-detail {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 0 32px 10px;
+        font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+        font-size: 12.5px;
+        color: var(--ink-2);
+        overflow-wrap: anywhere;
       }
 
       /* ------------------------------------------------------------ buttons */
@@ -374,6 +442,43 @@
         gap: 4px 16px;
         padding-bottom: 10px;
         border-bottom: 1px solid var(--ink);
+      }
+      /* Each section rule starts at a point, like the line in the mark. */
+      .section-head {
+        position: relative;
+      }
+      .section-head::after {
+        content: '';
+        position: absolute;
+        left: 0;
+        bottom: -4px;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--green);
+      }
+      /* Status labels carry a point: hollow while something is waiting, filled once it is taken. */
+      .request .state::before,
+      .ann .label::before,
+      .notice .what::before {
+        content: '';
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        margin-right: 8px;
+        border-radius: 50%;
+        vertical-align: 0;
+        box-sizing: border-box;
+        border: 2px solid currentColor;
+      }
+      .request[data-state='claimed'] .state::before,
+      .request[data-state='done'] .state::before,
+      .ann[data-draft='false'] .label::before,
+      .notice.open .what::before {
+        background: currentColor;
+      }
+      .ann[data-draft='false'] .label {
+        color: var(--green);
       }
       .section-head h2 {
         font-family: var(--serif);
@@ -736,6 +841,15 @@
       .colophon code {
         font-size: 12.5px;
       }
+      .colophon-mark {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .colophon-mark .mark {
+        width: 22px;
+        height: 22px;
+      }
 
       /* ------------------------------------------------------------ responsive */
       @media (max-width: 960px) {
@@ -760,9 +874,15 @@
         .wordmark h1 {
           font-size: 34px;
         }
-        .wordmark svg {
-          width: 32px;
-          height: 32px;
+        .wordmark .mark {
+          width: 40px;
+          height: 40px;
+        }
+        .line-rule .short {
+          width: 36px;
+        }
+        .sync-detail {
+          padding: 0 16px 10px;
         }
         .wordmark p {
           font-size: 15px;
@@ -791,7 +911,8 @@
         .sync-state {
           flex: 1;
         }
-        #sync {
+        #sync,
+        .detail-toggle {
           min-height: 44px;
         }
         .page {
@@ -842,24 +963,42 @@
   <body data-online="true">
     <a class="skip" href="#main">Skip to the board</a>
 
+    <!--
+      The Ghostline mark: one continuous line drawn as a G, passing through the points it joins.
+      The line breaks once and carries on: a neighbourhood stays connected through an outage.
+    -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol id="gl-mark" viewBox="5.5 5.5 29 29">
+        <g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
+          <path d="M27.07 11.57A11 11 0 1 0 13.69 29.01" />
+          <path d="M18.09 30.83A11 11 0 0 0 31 20H22.5" />
+        </g>
+        <g fill="currentColor">
+          <circle cx="27.07" cy="11.57" r="2.5" />
+          <circle cx="13.69" cy="29.01" r="2.1" />
+          <circle cx="18.09" cy="30.83" r="2.1" />
+          <circle cx="22.5" cy="20" r="2.5" />
+        </g>
+      </symbol>
+    </svg>
+
     <header class="masthead">
       <div class="masthead-row">
         <div class="wordmark">
-          <svg viewBox="0 0 40 40" aria-hidden="true">
-            <rect width="40" height="40" rx="8" fill="#1f4a37" />
-            <path d="M12 31V18a8 8 0 0 1 16 0v13l-4-2.7-4 2.7-4-2.7Z" fill="#f5efe3" />
-            <circle cx="17" cy="18.5" r="1.6" fill="#1f4a37" />
-            <circle cx="23" cy="18.5" r="1.6" fill="#1f4a37" />
-          </svg>
+          <svg class="mark" viewBox="0 0 40 40" aria-hidden="true"><use href="#gl-mark" /></svg>
           <div>
             <h1>Ghostline</h1>
-            <p>The neighbourhood board that keeps working offline</p>
+            <p>A quiet line between neighbours, even when the internet is gone.</p>
           </div>
         </div>
         <p class="dateline">
           <strong id="today"></strong><br />
           Posting as <span id="device"></span> on this device
         </p>
+      </div>
+      <div class="line-rule" aria-hidden="true">
+        <span class="seg long"></span><span class="node"></span><span class="gap"></span
+        ><span class="node"></span><span class="seg short"></span>
       </div>
     </header>
 
@@ -877,10 +1016,16 @@
           </li>
         </ul>
         <span class="bar-spacer"></span>
-        <span class="offline-note">No connection. Changes are kept here.</span>
         <div class="sync-state" id="sync-state" data-state="ready">
-          <span class="mark" aria-hidden="true"></span>
+          <svg class="link" viewBox="0 0 30 12" aria-hidden="true">
+            <line class="wire" x1="5" y1="6" x2="25" y2="6" />
+            <circle class="end" cx="4" cy="6" r="3" />
+            <circle class="end" cx="26" cy="6" r="3" />
+          </svg>
           <span id="status" role="status"></span>
+          <button type="button" class="detail-toggle" id="sync-detail-toggle" hidden>
+            Details
+          </button>
         </div>
         <button id="sync" class="btn primary" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -891,6 +1036,7 @@
           <span>Sync</span>
         </button>
       </div>
+      <p class="sync-detail" id="sync-detail" hidden></p>
     </nav>
 
     <main class="page" id="main">
@@ -1014,7 +1160,10 @@
     </main>
 
     <footer class="colophon">
-      <span>Every change is saved on this device first, then shared when you sync.</span>
+      <span class="colophon-mark">
+        <svg class="mark" viewBox="0 0 40 40" aria-hidden="true"><use href="#gl-mark" /></svg>
+        Every change is saved on this device first, then shared when you sync.
+      </span>
       <code id="footer-device"></code>
     </footer>
     <script type="module" src="./src/app.ts"></script>
