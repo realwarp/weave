@@ -18,13 +18,38 @@ same PID namespace, which needs Linux with a readable `/proc`. On Windows and ma
 without that proof) the open fails with `STORAGE_LOCKED`, the data files stay untouched, and a
 person must follow the procedure below. There is deliberately no "break the lock" option.
 
+With the default identity, Windows and macOS never take a lock over by themselves, so on those
+systems the cases below do not arise: a dead holder's lock always needs the six steps.
+
+Where automatic takeover runs (Linux with `/proc`), its last step replaces `LOCK` with a new file.
+If that step fails, the open fails and the error's `details` say what happened:
+
+| `details.reason`       | Error            | `details.retryDisposition`  | What is on disk                                 | What to do                         |
+| ---------------------- | ---------------- | --------------------------- | ----------------------------------------------- | ---------------------------------- |
+| `rename-blocked`       | `STORAGE_LOCKED` | `may-retry`                 | unchanged (old `LOCK` only)                     | Open again later                   |
+| `rename-not-permitted` | `STORAGE_ERROR`  | `operator-action-required`  | unchanged (old `LOCK` only)                     | Open as a user allowed to replace `LOCK`, or use the six steps |
+| `cleanup-incomplete`   | `STORAGE_LOCKED` | `manual-recovery-required`  | old `LOCK`, `LOCK.recovery`, often `LOCK.new-*` | The six steps below                |
+| `rename-failed`        | `STORAGE_ERROR`  | `manual-recovery-required`  | old `LOCK`, `LOCK.new-*`, `LOCK.recovery`       | Fix the cause, then the six steps  |
+
+`details.cause` is the system error code. `rename-blocked` (Windows refusing to replace a file
+that another program has open, or a denied permission, which Windows reports the same way) is seen
+only in WEAVE's own tests, which inject a reliable identity. `rename-not-permitted` means the
+rename is not allowed, for example in a shared directory with the sticky bit where `LOCK` belongs
+to another user; trying again as the same user fails the same way. After `rename-blocked` or
+`rename-not-permitted` the directory is as it was, so another program may take the lock over in
+the meantime. `rename-failed` covers any other error, for example `EROFS` (the filesystem is read-only): the
+old `LOCK` survives, `LOCK.new-*` and `LOCK.recovery` stay, and every later open fails with
+`STORAGE_LOCKED` because the guard is present. Make the filesystem writable first, then follow the
+six steps; they remove `LOCK.new-*` and `LOCK` while keeping the guard, and the guard last.
+
 Files you may see:
 
 | File               | Meaning                                                                 |
 | ------------------ | ----------------------------------------------------------------------- |
 | `LOCK`             | The current holder: `pid`, host identity, a nonce                       |
 | `LOCK.recovery`    | A recovery guard: someone is recovering this directory                  |
-| `LOCK.stale-*`     | A lock moved aside during an automatic takeover that did not finish      |
+| `LOCK.stale-*`     | A lock moved aside by an unfinished takeover in WEAVE 0.1.0             |
+| `LOCK.new-*`       | A new lock from a takeover that was killed or could not clean up        |
 | `MANIFEST`, `snap-*`, `journal-*` | Your data. **Never edit or delete these.**              |
 
 ## Stale lock: the six steps
@@ -65,7 +90,18 @@ Copy-Item -Recurse relay-data "relay-data.backup-$(Get-Date -Format yyyyMMddHHmm
 ### 4. Inspect
 
 List the directory and note the exact contents of `LOCK`, whether `LOCK.recovery` exists, and
-which `LOCK.stale-*` files exist.
+which `LOCK.stale-*` and `LOCK.new-*` files exist.
+
+If `LOCK.recovery` exists, read its `observedLockNonce`. It is the `nonce` of the `LOCK` that the
+interrupted takeover observed and meant to replace. Compare it with the `nonce` in `LOCK`:
+
+- Equal: the takeover stopped before replacing `LOCK`, so `LOCK` is still the dead holder's lock.
+- Different: the takeover had already replaced `LOCK`, so `LOCK` names the recoverer (its `pid`
+  is the `pid` in `LOCK.recovery`), or someone changed `LOCK` afterwards.
+
+A guard left by an earlier manual cleanup (`{"maintenance":true}`) has no `observedLockNonce`.
+Either way, every `pid` named in `LOCK` and `LOCK.recovery` must already be confirmed gone (step
+2). This comparison tells you what happened; it does not change the steps below.
 
 ### 5. Hold the guard, then remove the stale files and `LOCK`
 
@@ -83,7 +119,8 @@ which `LOCK.stale-*` files exist.
   If creation fails, someone else is recovering: stop.
 - Read `LOCK` again. If it differs from what you noted in step 4, a process took the directory
   meanwhile: remove only the guard you created and stop.
-- Delete every `LOCK.stale-*` file, then delete `LOCK`. Keep `LOCK.recovery` while you do this.
+- Delete every `LOCK.stale-*` and `LOCK.new-*` file, then delete `LOCK`. Keep `LOCK.recovery`
+  while you do this.
 
 ### 6. Remove the guard last, then reopen and validate
 
