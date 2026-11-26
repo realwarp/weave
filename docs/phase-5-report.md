@@ -96,6 +96,36 @@ raw logs (manifest `245A2EEA6B95FA491873A96A4FB96475897ED8BD58B250AE61F86121D470
 
 The documentation cleanup committed after `5022b74` changes only files under `docs/`.
 
+## Integration with `main` and PR #2 review fixes
+
+`main` (PR #3 merge `5e92ea6`, the Windows file-lock recovery fix) was merged into this branch at
+`abe06d0`, with no conflicts; the only file both changed is `tasks.md`, which kept both edits.
+PR #3 changes only `packages/storage` lock code and tests, the spec and the recovery guide; no
+Phase 5 code depends on the lock behaviour.
+
+The automated reviews of PR #2 raised these findings. Each fix has a regression test that failed
+on the previous code (captured before the fix) and fails again when the fix is reverted
+(mutation harness, clean tree, logs kept outside the repository):
+
+| ID | Finding | Fix | Regression test | Reverted fix |
+| --- | --- | --- | --- | --- |
+| F1 | Counter totals rounded near `MAX_SAFE_INTEGER` | exact `bigint` sum | `packages/core/test/resolvers/counter-precision.test.ts` | 3 tests fail |
+| F2 | A banned endpoint's compaction data was stored before the ban check | ban checked first | `packages/core/test/sync/ban-compaction.test.ts` | 1 fails |
+| F3 | A relay pull denied after its selection changed left an empty member | undo the membership it created | `packages/relay/test/compaction/membership-races.test.ts` | 1 fails |
+| F4 | Relay `removePeer` could land inside a running push | push queue and commit-counter bump | same file | queue and bump both removed: 1 fails; either one alone still passes (each closes the race) |
+| F5 | Snapshot verification copied one origin's seq list per op | per-origin set, added in place | `packages/core/test/sync/snapshot-scaling.test.ts` (counts iterator steps, no timing) | 1 fails |
+| F6 | Snapshot bootstrap accepted ops of an undefined collection without holding | `SCHEMA_TOO_NEW` unless holding (R4.10, R8.7) | `packages/core/test/sync/snapshot-unknown-collection.test.ts` | 1 fails |
+
+Open: F7. Compaction deletes the `mut/` records of the ops it removes (design 7.2 and ADR-0006
+say so), so a retry of such a mutation is no longer recognized. R5.4 states the idempotency
+without a compaction exception. This needs a decision; nothing was changed.
+
+Verification at `dfd1c79` (clean tree): build, lint, format, test typecheck, boundaries, license,
+API docs and both demos exit 0; `Tests  753 passed (753)` in 75 files; browser
+`Tests  27 passed (27)`; app differences up to date; reproducible build passed; both Playwright UI
+tests 1 passed; benchmarks passed (10,000 ops in 1.55 s; 1,000-op sync 0.11 s);
+`npm audit --omit=dev` 0 vulnerabilities. CI results are recorded in the pull request.
+
 ## Compatibility
 
 Every addition is optional and off by default (ADR-0015). 0.1.0 code, adapters and transports
@@ -119,8 +149,8 @@ New features with no breaking change to existing behaviour, so a minor version u
 Versioning. The `[Unreleased]` section of `CHANGELOG.md` is written for it. Proposed steps, not
 taken without approval:
 
-1. Merge pull request #2 (`feat/phase-5-advanced` to `main`, opened, not merged) after human
-   approval.
+1. Decide F7, have the fixes independently reviewed, then merge pull request #2
+   (`feat/phase-5-advanced` to `main`, opened, not merged) after human approval.
 2. Set `version` to `0.2.0` in the root and package `package.json` files, and date the changelog
    section.
 3. Tag `v0.2.0` on that commit. The existing `v0.1.0` tag stays as it is.
