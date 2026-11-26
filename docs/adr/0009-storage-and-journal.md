@@ -34,7 +34,9 @@ Option 2 (SQLite was rejected: a native or WASM runtime dependency).
   the same host, boot and PID namespace, under a `LOCK.recovery` guard with nonce revalidation.
   There is no `breakLock` option. Where identity cannot be proven (Windows, macOS), a stale lock
   needs the documented manual recovery (`docs/guides/storage-recovery.md`), which removes the guard
-  last.
+  last. Amended in PR #3: the takeover writes `LOCK.new-*` and renames it over `LOCK`; a failed
+  replacement backs out or keeps the guard, so ownership is conditional (R15.17 as amended;
+  design 9.1 steps 5 and 6).
 - **IndexedDB.** One object store `kv`, one IDB transaction per call with strict durability where
   supported, and a Web Lock per database so a second tab gets `STORAGE_LOCKED`.
 

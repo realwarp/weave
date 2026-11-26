@@ -58,7 +58,7 @@ export async function runRecoveryProcedure(
 
   // Step 4: inspect the artifacts.
   const names = await readdir(dir);
-  const stale = names.filter((n) => n.startsWith('LOCK.stale-'));
+  const stale = names.filter((n) => n.startsWith('LOCK.stale-') || n.startsWith('LOCK.new-'));
   const inspectedLock = names.includes('LOCK') ? await readFile(lock, 'utf8') : undefined;
   const hadGuard = names.includes('LOCK.recovery');
   await step('after-inspect');

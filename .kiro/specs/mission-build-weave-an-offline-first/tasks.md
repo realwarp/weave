@@ -229,7 +229,7 @@ After Gate 0, lanes A to G run at the same time. Inside lane A the record-writin
 - [x] **T1.C3 File adapter: locking, recovery guard, manual recovery [MVP]**
   - Owner: Storage and data.
   - Paths: `packages/storage/src/file/lock.ts`, `packages/storage/src/file/hostid.ts`, `packages/storage/test/file/lock*.test.ts`, `packages/storage/test/file/recovery*.test.ts`.
-  - Depends: T1.C2. Req: R9.6(d) to (f), R15.17, R15.20, design 9.1 (locking).
+  - Depends: T1.C2. Req: R9.6(d) to (f), R15.17, R15.20, design 9.1 (locking). Amended in PR #3 (R9.6(d) nonce identity, R9.6(f) `LOCK.new-*`, R10.1, R15.17 conditional ownership, R15.20): tests `lock-race`, `lock-stress`, `lock-rename-blocked`, `lock-interleavings` in `packages/storage/test/file/`.
   - Implement `hostId` as `{hostname, bootId, pidNamespace}` with the reliable or unproven rule, `LOCK` with `wx`, the open procedure with `LOCK.recovery` (guard first, revalidation of the observed nonce, ordinary-open refusal and post-create re-check, a guard that is never removed automatically), `STORAGE_LOCKED`, `STORAGE_LOCK_LOST` (nonce re-read before every write), epochs, and no override option.
   - Done when: the lock tests of design 9.1 pass: live holder refused whatever its age; different or unproven `hostId` refused; Linux takeover; Windows and macOS refusal; the reviewed takeover interleaving; an N-process race with a writer counter at every failpoint; guard behaviors; a static test that no public option or CLI flag overrides a lock; and the **manual recovery script test** (six leftover combinations, the guide's six steps followed literally with the guard kept until last, the reverse-order control, the negative tests, and the manual-cleanup concurrency test where ordinary openers receive `STORAGE_LOCKED` throughout) passes once T4.2 provides the guide text it executes.
 
@@ -616,7 +616,7 @@ Each task is its own gate with an independent review. **The order of requirement
 | R15.14 supersession | T1.B3, T1.F2 |
 | R15.15 idempotency tests | T1.A5 |
 | R15.16 push-side isolation | T1.D3, T2.3 |
-| R15.17 file-adapter failure tests | T1.C2, T1.C3, T2.2 |
+| R15.17 file-adapter failure tests (amended: conditional takeover ownership, replacement-failure tests) | T1.C2, T1.C3, T2.2, PR #3 |
 | R15.18 pending-identity and relay concurrency | T1.A6, T1.E1, T2.3 |
 | R15.19 pending promotion | T1.A6 |
 | **R15.20 recovery and cleanup concurrency** | **T1.C3 (script, guard-last order, reverse-order control, openers refused throughout), T4.2 (guide), T2.2** |

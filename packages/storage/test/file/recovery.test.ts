@@ -49,7 +49,7 @@ describe('manual offline recovery (design 9.1, R15.20)', () => {
 
   /** A recoverer with a RELIABLE identity... cannot exist here, so build guard states directly. */
   async function guardState(
-    kind: 'guard+old-lock' | 'guard+new-lock' | 'guard-only' | 'stale+guard',
+    kind: 'guard+old-lock' | 'guard+new-lock' | 'guard-only' | 'stale+guard' | 'pending+guard',
   ): Promise<void> {
     const lock = JSON.parse(await readFile(path.join(dir, 'LOCK'), 'utf8')) as Record<
       string,
@@ -75,6 +75,12 @@ describe('manual offline recovery (design 9.1, R15.20)', () => {
     if (kind === 'guard-only') await unlink(path.join(dir, 'LOCK'));
     if (kind === 'stale+guard')
       await rename(path.join(dir, 'LOCK'), path.join(dir, 'LOCK.stale-r1'));
+    // A recoverer killed after writing its pending lock and before renaming it over LOCK.
+    if (kind === 'pending+guard')
+      await writeFile(
+        path.join(dir, 'LOCK.new-r1'),
+        JSON.stringify({ ...lock, nonce: 'new', pid: recoverer }),
+      );
   }
 
   const combos = [
@@ -83,6 +89,7 @@ describe('manual offline recovery (design 9.1, R15.20)', () => {
     'guard+new-lock',
     'guard-only',
     'stale+guard',
+    'pending+guard',
   ] as const;
 
   for (const combo of combos) {
