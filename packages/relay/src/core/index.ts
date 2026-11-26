@@ -173,10 +173,24 @@ export class RelayCore implements SyncEndpoint {
     return this.storage.transaction('ro', async (tx) => (await readMember(tx, id))?.ackVector);
   }
 
-  private register(id: ReplicaId): Promise<void> {
+  /** Records `id` as a member if it is not one yet. Returns true when this call created it. */
+  private register(id: ReplicaId): Promise<boolean> {
     return this.storage.transaction('rw', async (tx) => {
-      if ((await readMember(tx, id)) === undefined)
-        tx.put(keys.peer(id), JSON.stringify({ ackVector: {} }));
+      if ((await readMember(tx, id)) !== undefined) return false;
+      tx.put(keys.peer(id), JSON.stringify({ ackVector: {} }));
+      return true;
+    });
+  }
+
+  /**
+   * Undoes a registration this pull made, when its answer is then denied: the entry is removed
+   * only if it still has an empty acknowledgement (nothing else used it since).
+   */
+  private unregisterIfUnused(id: ReplicaId): Promise<void> {
+    return this.storage.transaction('rw', async (tx) => {
+      const member = await readMember(tx, id);
+      if (member !== undefined && Object.keys(member.ackVector).length === 0)
+        tx.delete(keys.peer(id));
     });
   }
 
@@ -303,13 +317,21 @@ export class RelayCore implements SyncEndpoint {
     const first = hook === undefined ? undefined : await this.preparePull(request);
     if (first !== undefined)
       await authorizePullSend(hook, request.replicaId, first.selected.lines, auth);
-    await this.register(request.replicaId); // membership before any data is returned (R3.6)
+    const created = await this.register(request.replicaId); // membership before data (R3.6)
     const { vector, compaction, selected } = await this.preparePull(request);
     if (
       first !== undefined &&
       JSON.stringify(first.selected.lines) !== JSON.stringify(selected.lines)
-    )
-      await authorizePullSend(hook, request.replicaId, selected.lines, auth);
+    ) {
+      try {
+        await authorizePullSend(hook, request.replicaId, selected.lines, auth);
+      } catch (e) {
+        // A denied pull writes nothing (F3): undo a membership this pull created, so a rejected
+        // caller never holds back the compaction horizon with an empty acknowledgement.
+        if (created) await this.unregisterIfUnused(request.replicaId);
+        throw e;
+      }
+    }
     return {
       endpointId: this.endpointId,
       durable: vector,
@@ -565,23 +587,33 @@ export class RelayCore implements SyncEndpoint {
     };
   }
 
-  /** Mark a peer as removed. Idempotent: first value kept. */
-  async removePeer(id: ReplicaId): Promise<void> {
-    await this.storage.transaction('rw', async (tx) => {
-      const compaction = await readCompaction(tx);
-      const currentRelayVector = (await readState(tx)).vector;
+  /**
+   * Mark a peer as removed. Idempotent: first value kept. Runs through the push queue, like
+   * compaction, so it never lands between a push's read of the removed list and its commit, and
+   * it raises the commit counter so a push that read the state earlier fails its re-check (F4).
+   */
+  removePeer(id: ReplicaId): Promise<void> {
+    return this.queue.run(() =>
+      this.storage.transaction('rw', async (tx) => {
+        const compaction = await readCompaction(tx);
+        const state = await readState(tx);
 
-      // First value kept (idempotent)
-      if (compaction.removed[id] === undefined) {
-        const lastSeq = currentRelayVector[id] ?? 0;
-        tx.put(
-          COMPACTED_KEY,
-          JSON.stringify({
-            compactedThrough: compaction.compactedThrough,
-            removed: { ...compaction.removed, [id]: lastSeq },
-          }),
-        );
-      }
-    });
+        // First value kept (idempotent)
+        if (compaction.removed[id] === undefined) {
+          const lastSeq = state.vector[id] ?? 0;
+          tx.put(
+            COMPACTED_KEY,
+            JSON.stringify({
+              compactedThrough: compaction.compactedThrough,
+              removed: { ...compaction.removed, [id]: lastSeq },
+            }),
+          );
+          tx.put(
+            STATE_KEY,
+            JSON.stringify({ ...state, commit: state.commit + 1 } satisfies RelayState),
+          );
+        }
+      }),
+    );
   }
 }

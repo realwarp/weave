@@ -46,6 +46,36 @@ default; 0.1.0 code, adapters and transports work unchanged. Details and limits:
 - The WebSocket frame parser does linear work for any chunking; a one-byte drip no longer costs
   quadratic CPU (T5.8).
 
+### Fixed (PR #2 review, before release)
+
+- Counter totals are summed exactly; a total near `Number.MAX_SAFE_INTEGER` (for example
+  `MAX + 2 - 2`) no longer rounds, and only a true total outside the safe range is refused.
+- The sync client checks a peer ban before storing the compaction horizon and removed list from a
+  pull response, so a banned endpoint cannot influence `compact()`.
+- A relay pull denied by the authorization hook after its selection changed no longer leaves the
+  caller registered with an empty acknowledgement (which held the compaction horizon at zero).
+- Relay `removePeer` runs through the push queue and raises the commit counter, so a push that
+  was already running can no longer store an op after the removal took effect.
+- Snapshot verification adds each op's `seq` to a per-origin set in place instead of copying the
+  list for every op (linear instead of quadratic in one origin's history).
+- Snapshot bootstrap refuses an op of a collection the app does not define with `SCHEMA_TOO_NEW`,
+  as normal sync does; only a replica with `holdNewerSchema: true` stores it as held.
+
+### Fixed (merged from `main`, PR #3)
+
+- File adapter: a takeover race could leave no lock owner. Step 6 of the guarded open now writes
+  `LOCK.new-*` and renames it over `LOCK`, so `LOCK` never goes missing (design 9.1).
+- File adapter: a takeover whose replacement fails no longer throws a raw filesystem error. It
+  returns typed errors with `details.reason`, `details.cause` and `details.retryDisposition`:
+  Windows `EPERM`/`EACCES`/`EBUSY` give `STORAGE_LOCKED` (`rename-blocked`, `may-retry`); POSIX
+  `EPERM`/`EACCES` give `STORAGE_ERROR` (`rename-not-permitted`, `operator-action-required`); any
+  other error, or a back-out that cannot be proven, keeps `LOCK.recovery` and needs the manual
+  recovery procedure (`rename-failed` or `cleanup-incomplete`, `manual-recovery-required`). The
+  top-level `WeaveError.retryable` is unchanged (transport errors only).
+- Requirements R9.6(d), R9.6(f), R10.1, R15.17 and R15.20 amended accordingly (at most one lock
+  owner always; exactly one when a takeover succeeds). The recovery guide covers `LOCK.new-*` and
+  tells the operator to read the guard's `observedLockNonce`.
+
 ## [0.1.0] - 2026-11-24
 
 First release: the MVP of the specification in `.kiro/specs/mission-build-weave-an-offline-first/`.

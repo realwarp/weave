@@ -96,7 +96,8 @@ export async function verifySnapshotEnvelope(
 
   const ops: Op[] = [];
   const seen = new Set<string>();
-  const perOrigin = new Map<string, number[]>();
+  // Per origin, the seqs present, added in place (no per-op copy of the list: F5).
+  const perOrigin = new Map<string, Set<number>>();
   let lamport = 0;
   for (const line of snapshot.ops) {
     const op = await verifyOpLine(line, options);
@@ -105,14 +106,16 @@ export async function verifySnapshotEnvelope(
     seen.add(key);
     if (op.seq > (snapshot.vector[op.replicaId] ?? 0))
       invalid('op above the vector', { opId: key });
-    perOrigin.set(op.replicaId, [...(perOrigin.get(op.replicaId) ?? []), op.seq]);
+    let seqs = perOrigin.get(op.replicaId);
+    if (seqs === undefined) perOrigin.set(op.replicaId, (seqs = new Set()));
+    seqs.add(op.seq);
     lamport = Math.max(lamport, op.lamport);
     ops.push(op);
   }
   for (const [origin, top] of Object.entries(snapshot.vector)) {
     const from = (snapshot.compactedThrough[origin] ?? 0) + 1;
     if (from > top + 1) invalid('compactedThrough above the vector', { origin });
-    const held = new Set(perOrigin.get(origin) ?? []);
+    const held = perOrigin.get(origin) ?? new Set<number>();
     for (let seq = from; seq <= top; seq++)
       if (!held.has(seq)) invalid('missing op below the vector', { opId: `${origin}:${seq}` });
   }

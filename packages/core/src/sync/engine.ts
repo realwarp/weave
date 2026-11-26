@@ -91,6 +91,9 @@ export async function runSync(
         ...(host.holdsNewer?.() === true ? { hold: true } : {}),
       }),
     ).then(async (res) => {
+      // [ADV] R10.5: a banned endpoint's response is untrusted, so check the ban before storing
+      // anything from it (its horizon would otherwise drive a later compact()).
+      host.assertPeerAllowed?.(res.endpointId);
       // [ADV] Learn the relay's horizon and removed list (R3.6, R3.10).
       if (res.compaction !== undefined && host.noteCompaction !== undefined)
         await host.noteCompaction(res.compaction);

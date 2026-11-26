@@ -8,7 +8,7 @@
  * larger total per replica. The visible value is the sum of `p - n` over all replicas.
  *
  * Merging is commutative, associative and idempotent, so the result is a pure function of the
- * multiset of frontier entries (R6.6). Totals are safe integers, so the sum is exact.
+ * multiset of frontier entries (R6.6). Totals are safe integers and the sum is computed exactly.
  */
 import { compareUtf8 } from '../canonical/encode.js';
 import { WeaveError } from '../contracts/errors.js';
@@ -51,15 +51,22 @@ export function mergeCounterStates(states: readonly unknown[]): CounterState {
   return sorted;
 }
 
-/** The visible value of a counter state: the sum of every replica's `p - n`. */
+const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
+
+/**
+ * The visible value of a counter state: the sum of every replica's `p - n`. The sum is computed
+ * exactly (as a `bigint`), so intermediate values beyond 2^53 cannot round, and the safe-integer
+ * check applies to the exact result.
+ */
 export function counterTotal(state: CounterState): number {
-  let sum = 0;
+  let sum = BigInt(0);
   for (const key of Object.keys(state).sort(compareUtf8)) {
     const [p, n] = state[key]!;
-    sum += p - n;
+    sum += BigInt(p) - BigInt(n);
   }
-  if (!Number.isSafeInteger(sum)) fail('counter: the total is not a safe integer', { sum });
-  return sum;
+  if (sum > MAX_SAFE || sum < -MAX_SAFE)
+    fail('counter: the total is not a safe integer', { sum: sum.toString() });
+  return Number(sum);
 }
 
 /**

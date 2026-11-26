@@ -1239,7 +1239,16 @@ class Engine implements Replica, SyncHost {
     // Application schema: every readable op must validate, and none may need a newer schema.
     for (const op of ops) {
       const definition = this.definitions.get(op.collection);
-      if (definition === undefined) continue;
+      // A collection this replica does not define is unsupported (R4.10); only a holding replica
+      // stores such ops, as held (R8.7). Same boundary as normal sync (F6).
+      if (definition === undefined) {
+        if (this.hold) continue;
+        throw new WeaveError(
+          'SCHEMA_TOO_NEW',
+          'The snapshot holds a collection this app does not define; upgrade first',
+          { details: { collection: op.collection, requiredVersion: op.schemaVersion } },
+        );
+      }
       if (op.schemaVersion > definition.version && this.hold) continue; // held (R8.7)
       if (op.schemaVersion > definition.version)
         throw new WeaveError('SCHEMA_TOO_NEW', 'The snapshot needs a newer schema; upgrade first', {
