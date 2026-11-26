@@ -1,6 +1,7 @@
 # ADR-0010: Transport as `SyncEndpoint`, retry and backoff, verified sync point
 
-Status: accepted. Requirements: R4, R10.2, R10.3, design 8.
+Status: accepted. Shipped in 0.1.0; the WebSocket transport and direct network sync ([ADV]) were
+added in 0.2.0 (task T5.8, ADR-0015). Requirements: R4, R4.4, R10.2, R10.3, design 8.
 
 ## Context
 
@@ -36,7 +37,10 @@ Option 2.
 
 ## Consequences
 
-- One conformance suite covers the reference endpoint, in-process and HTTP transports, and the
-  real relay.
+- One conformance suite covers the reference endpoint, in-process, HTTP and (0.2.0) WebSocket
+  transports, and the real relay.
 - `complete` is a real guarantee at that moment, not "no error happened".
-- WebSocket and direct network transports are [ADV] and not implemented.
+- WebSocket and direct network transports are [ADV]. In 0.1.0 they were not implemented. 0.2.0
+  adds `@weave/transport/websocket` and `@weave/transport/websocket/server`, which carry the same
+  `SyncEndpoint` calls, so replicas can sync directly over the network. The relay has no
+  WebSocket route. See ADR-0015.

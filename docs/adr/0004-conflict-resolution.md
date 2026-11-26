@@ -1,6 +1,7 @@
 # ADR-0004: Conflict resolution as a function of the field frontier
 
-Status: accepted. Requirements: R6, D5, design 5.2.
+Status: accepted. Shipped in 0.1.0; the counter and custom resolvers ([ADV]) were added in 0.2.0
+(task T5.4, ADR-0015). Requirements: R6, R6.10, D5, design 5.2.
 
 ## Context
 
@@ -32,4 +33,7 @@ A frontier with more than one entry is a conflict, even when the resolver picks 
 - Determinism is testable: resolvers are called directly on random frontiers and all
   permutations (`packages/core/test/resolvers`).
 - Wall clocks never affect results (only Lamport order does).
-- Custom resolvers and a counter resolver are [ADV] and not implemented.
+- Custom resolvers (`f.custom` with `defineResolver`) and the `counter` resolver are [ADV]. In
+  0.1.0 they were not implemented; 0.2.0 implements both within this decision (pure functions of
+  the frontier), and `assertResolverDeterministic` tests a custom resolver the same way. See
+  ADR-0015 and the resolver guide.

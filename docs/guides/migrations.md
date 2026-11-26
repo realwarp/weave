@@ -48,8 +48,20 @@ stops at the first op the receiver cannot read, so the receiver never holds a ga
 returns `partial` with code `PEER_SCHEMA_OLDER` and lists the blocked origins. After the receiver
 upgrades, the next sync delivers the rest.
 
-Writing with an older schema while peers use a newer one, and holding newer-schema ops for later,
-are [ADV] features and not implemented.
+### Holding newer-schema ops (0.2.0, opt-in)
+
+With `createReplica({ holdNewerSchema: true })`, a replica accepts ops it cannot read yet (a newer
+`schemaVersion`, or a collection its code does not define) instead of stopping at them. It stores
+and forwards them, but they stay out of derived state. `status().held` reports how many are held
+and which schema version each collection needs. After the app is upgraded, the held ops are
+validated against the new schema when the replica opens and then enter state; an op that fails
+stays stored, never enters state, and is counted as invalid.
+
+While a record has held ops, a local write to it fails with `SCHEMA_TOO_NEW`. Without the option,
+the prefix rule above applies unchanged. Details: ADR-0015.
+
+Writing with an older schema while peers use a newer one (mixed-version writing) is not
+implemented.
 
 ## Testing a migration
 

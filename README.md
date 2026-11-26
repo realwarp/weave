@@ -59,10 +59,12 @@ To sync through a relay instead, start `weave-relay --data ./relay-data --port 8
   encoding.
 - **Version vectors.** Replicas exchange exactly the ops the other side lacks.
 - **Deterministic resolvers.** Concurrent edits to one field merge by fixed rules
-  (`last-writer-wins` by Lamport order, `max`, `min`, `set-union`, `max-rank`). Conflicts stay
-  visible through `replica.conflicts`.
-- **Schema versions.** Old ops are upgraded on read; a peer never receives ops it cannot read.
-- **Adapters.** Storage (memory, file, IndexedDB) and transport (in-process, HTTP) are pluggable.
+  (`last-writer-wins` by Lamport order, `max`, `min`, `set-union`, `max-rank`, and in 0.2.0
+  `counter` and custom resolvers). Conflicts stay visible through `replica.conflicts`.
+- **Schema versions.** Old ops are upgraded on read; a peer never receives ops it cannot read
+  (unless it opts in to holding them, 0.2.0).
+- **Adapters.** Storage (memory, file, IndexedDB) and transport (in-process, HTTP, and in 0.2.0
+  WebSocket) are pluggable.
 
 See `docs/architecture.md` and `docs/adr/`.
 
@@ -72,7 +74,7 @@ See `docs/architecture.md` and `docs/adr/`.
 | ----------------------------------------------- | ---------------------------------------------------------- |
 | [`@weave/core`](packages/core/README.md)        | Engine, schema, resolvers, canonical encoding, sync engine |
 | [`@weave/storage`](packages/storage/README.md)  | Memory, file (Node.js) and IndexedDB (browser) adapters    |
-| [`@weave/transport`](packages/transport/README.md) | In-process and HTTP client transports                   |
+| [`@weave/transport`](packages/transport/README.md) | In-process, HTTP and WebSocket transports  |
 | [`@weave/relay`](packages/relay/README.md)      | Store-and-forward relay server and `weave-relay` CLI       |
 | [`@weave/testing`](packages/testing/README.md)  | Conformance suites, simulator, fault injection (dev only)  |
 
@@ -97,14 +99,37 @@ Built and tested: the core engine, memory, file and IndexedDB storage (IndexedDB
 transports, the relay, the simulator, both applications, and the property, scenario, fuzz,
 browser, relay end-to-end and benchmark suites. See [CHANGELOG.md](CHANGELOG.md).
 
-Advanced features (Phase 5, built and independently reviewed on `feat/phase-5-advanced`, proposed
-for 0.2.0 and not yet released): compaction and `removePeer`, snapshot bootstrap, `restore` and
+Advanced features (Phase 5), merged into `main` and planned for 0.2.0 (not released yet; the
+latest release is 0.1.0): compaction and `removePeer`, snapshot bootstrap, `restore` and
 `update-wins`, the counter resolver and custom resolvers, holding newer-schema ops, the
 authorization hook and authenticated identity, peer bans, the WebSocket transport and direct
 network sync, and the GHOSTLINE "me too" counter. Every one is off unless you turn it on, and
 0.1.0 code keeps working unchanged; see
 [ADR-0015](docs/adr/0015-phase-5-contract-additions.md) for each addition and its limits, and
 `docs/reviews/T5.*.md` for the review reports.
+
+Known limits of these features (details in ADR-0015 and the [threat model](docs/threat-model.md)):
+
+- Compaction and snapshot archives trust members to follow the acknowledgement protocol; they
+  are not safe against a malicious member.
+- Peer bans are kept in memory, keyed by the claimed replica ID, on the replica side only.
+- The WebSocket server has no TLS, connection cap or idle timeout; across networks, run it behind
+  a proxy. The relay has no WebSocket route.
+- Authorization decisions are per request and per origin, not per record; the relay's admin
+  routes accept any valid secret.
+- Mixed-version writing is not implemented (holding newer-schema ops is).
+- With compaction, `mut/` keeps one small entry per local write for the life of the replica, so
+  retries stay idempotent; there is no expiry.
+
+**Upgrading and downgrading.** A 0.1.0 store opens in place under 0.2.0; no migration is needed.
+Upgrade every device and the relay before turning on any Phase 5 feature. A 0.1.0 peer rejects
+`restore` ops (`NOT_SUPPORTED`), and it cannot define counter or custom fields or a `deletes`
+policy: it would apply an `update-wins` collection's ordinary ops with delete-wins rules and derive
+a different state. **Do not move a store back to 0.1.0 after any Phase 5 feature has written to
+it.** 0.1.0 does not detect the newer data and opens the store without an error, but it can
+silently derive a different state: for example, after a `restore` op is stored, 0.1.0 still shows
+the restored record at first, and once `rebuild()` runs it ignores the restore and the record reads
+as deleted. See [CHANGELOG.md](CHANGELOG.md).
 
 ## Guides
 
