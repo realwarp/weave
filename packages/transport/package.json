@@ -1,6 +1,6 @@
 {
   "name": "@weave/transport",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "WEAVE transports: in-process, HTTP client and WebSocket",
   "license": "MIT",
   "type": "module",

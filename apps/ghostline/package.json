@@ -1,6 +1,6 @@
 {
   "name": "@weave/ghostline",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "GHOSTLINE: offline-first community coordination on WEAVE",
   "license": "MIT",
   "type": "module",

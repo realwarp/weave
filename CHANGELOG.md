@@ -4,7 +4,9 @@ All notable changes to this project are documented in this file. The format foll
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] (proposed 0.2.0)
+## [Unreleased]
+
+## [0.2.0] - 2026-11-26
 
 The [ADV] features of the specification (Phase 5, tasks T5.1 to T5.9), each implemented, tested
 and independently reviewed (`docs/reviews/T5.*.md`). All additions are optional and off by

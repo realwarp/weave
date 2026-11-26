@@ -1,6 +1,6 @@
 {
   "name": "@weave/storage",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "WEAVE storage adapters: memory, file (Node.js) and IndexedDB (browser)",
   "license": "MIT",
   "type": "module",

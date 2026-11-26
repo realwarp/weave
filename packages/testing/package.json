@@ -1,6 +1,6 @@
 {
   "name": "@weave/testing",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "WEAVE testing tools (development only): conformance suites, simulators, fault injection",
   "license": "MIT",
   "type": "module",
