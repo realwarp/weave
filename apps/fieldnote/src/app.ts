@@ -52,7 +52,7 @@ function el<K extends keyof HTMLElementTagNameMap>(
   if (cls !== undefined) node.className = cls;
   return node;
 }
-function button(label: string, onClick: () => Promise<unknown>, cls = 'btn'): HTMLButtonElement {
+function button(label: string, onClick: () => Promise<unknown>, cls = 'fn-btn'): HTMLButtonElement {
   const b = el('button', label, cls);
   b.type = 'button';
   b.addEventListener('click', () => void act(onClick, b));
@@ -64,23 +64,35 @@ const STATUS_LABEL: Record<Status, string> = {
   in_review: 'In review',
   closed: 'Closed',
 };
+const STATUS_ORDER: Status[] = ['open', 'in_review', 'closed'];
+
+/** Status as a three-cell gauge (one, two or three cells filled) plus its name. */
 function statusMark(s: Status): HTMLSpanElement {
-  const span = el('span', STATUS_LABEL[s], 'st');
+  const span = el('span', undefined, 'st');
   span.dataset['s'] = s;
+  const g = el('span', undefined, 'g');
+  g.setAttribute('aria-hidden', 'true');
+  const at = STATUS_ORDER.indexOf(s);
+  for (let i = 0; i < 3; i++) g.append(el('i', undefined, i <= at ? 'on' : undefined));
+  span.append(g, STATUS_LABEL[s]);
   return span;
 }
+
+/** A short, stable reference for a record: the first characters of its record ID. */
+const ref = (id: string) => id.slice(0, 6).toUpperCase();
 
 // ---------------------------------------------------------------- status line
 
 type SyncState = 'ready' | 'syncing' | 'synced' | 'partial' | 'offline' | 'error';
 
 const MESSAGES = {
-  ready: 'Ready. Your notes are saved on this device.',
-  offline: "You're offline. Notes are saved on this device.",
-  backOnline: 'Back online. Press Sync to share your notes.',
-  syncing: 'Sharing your notes...',
+  ready: 'Ready. Records are saved on this device.',
+  offline: 'Offline. Records are saved on this device.',
+  backOnline: 'Back online. Press Sync to upload your records.',
+  syncing: 'Syncing records...',
   synced: 'Up to date.',
-  failed: "Couldn't sync. Your notes are still saved here. Try again.",
+  unshared: 'New records saved here. Press Sync to upload them.',
+  failed: "Couldn't sync. Your records are still saved here. Try again.",
   schemaOlder: 'Partly up to date. Some changes need a newer schema on this device.',
   notSettled: 'Still catching up. Press Sync again to finish.',
   actionFailed: "That didn't work. Please try again.",
@@ -185,32 +197,37 @@ function select(id: string): void {
     resetObsForm();
   }
   void render().then(() => {
-    if (matchMedia('(max-width: 900px)').matches) $('detail').scrollIntoView({ block: 'start' });
+    if (matchMedia('(max-width: 960px)').matches) $('detail').scrollIntoView({ block: 'start' });
   });
 }
 
 function inspectionRow(r: InspectionRow): HTMLTableRowElement {
   const tr = el('tr', undefined, r.id === selected ? 'selected' : undefined);
   tr.dataset['id'] = r.id;
-  const td = el('td');
-  const b = el('button', undefined, 'row-btn');
+  const refCell = el('td', ref(r.id), 'ref');
+  const main = el('td');
+  const b = el('button', r.title, 'title-btn');
   b.type = 'button';
   b.setAttribute('aria-pressed', String(r.id === selected));
-  b.append(el('span', r.title, 't'), statusMark(r.status));
-  b.append(el('span', r.where || 'No location', r.where ? 'w' : 'w none'));
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    select(r.id);
+  });
+  main.append(b, el('span', r.where || 'No location', r.where ? 'loc' : 'loc none'));
   if (r.openConflicts > 0)
-    b.append(
-      el('span', `${r.openConflicts} open conflict${r.openConflicts === 1 ? '' : 's'}`, 'c'),
+    main.append(
+      el('span', `⚠ ${r.openConflicts} open conflict${r.openConflicts === 1 ? '' : 's'}`, 'warn'),
     );
-  b.addEventListener('click', () => select(r.id));
-  td.append(b);
-  tr.append(td);
+  const st = el('td', undefined, 'stc');
+  st.append(statusMark(r.status));
+  tr.append(refCell, main, st);
+  tr.addEventListener('click', () => select(r.id));
   return tr;
 }
 
-function fact(label: string, value: string, emptyText: string): HTMLDivElement {
+function specCell(label: string, value: string, emptyText: string): HTMLDivElement {
   const d = el('div');
-  d.append(el('div', label, 'label'), el('div', value || emptyText, value ? 'v' : 'v none'));
+  d.append(el('div', label, 'cap'), el('div', value || emptyText, value ? 'v' : 'v none'));
   return d;
 }
 
@@ -221,41 +238,36 @@ function whereParts(row: InspectionRow): { site: string; zone: string } {
 }
 
 function recordHead(row: InspectionRow): HTMLElement[] {
-  const top = el('div', undefined, 'top-line');
-  const titleBox = el('div');
-  titleBox.append(el('div', 'Inspection', 'label'), el('h3', row.title));
-  top.append(titleBox, statusMark(row.status));
+  const line1 = el('div', undefined, 'line1');
+  line1.append(el('span', 'Inspection', 'cap'), el('span', `REF ${ref(row.id)}`, 'rid'));
+  const title = el('h3', row.title);
 
-  const facts = el('div', undefined, 'facts');
+  const spec = el('div', undefined, 'spec');
   const { site, zone } = whereParts(row);
-  if (version === 1) facts.append(fact('Location', site, 'Not recorded'));
-  else facts.append(fact('Site', site, 'Not recorded'), fact('Zone', zone, 'Not recorded'));
-  facts.append(fact('Assigned', row.assignees.join(', '), 'Nobody'));
+  if (version === 1) spec.append(specCell('Location', site, 'Not recorded'));
+  else spec.append(specCell('Site', site, 'Not recorded'), specCell('Zone', zone, 'Not recorded'));
+  spec.append(specCell('Assigned', row.assignees.join(', '), 'Nobody'));
 
-  // The status path. Under concurrency the more advanced status wins (max-rank).
-  const path = el('ol', undefined, 'path');
-  path.setAttribute('aria-label', 'Status path');
-  const order: Status[] = ['open', 'in_review', 'closed'];
-  const at = order.indexOf(row.status);
-  order.forEach((s, i) => {
-    const li = el(
-      'li',
-      undefined,
-      i < at ? 'done' : i === at ? (s === 'closed' ? 'done' : 'now') : '',
-    );
-    li.append(el('span', undefined, 'pt'), el('span', STATUS_LABEL[s]));
+  // Status progression. Under concurrency the more advanced status wins (max-rank).
+  const stages = el('ol', undefined, 'stages');
+  stages.setAttribute('aria-label', 'Status progression');
+  const at = STATUS_ORDER.indexOf(row.status);
+  STATUS_ORDER.forEach((s, i) => {
+    const cls = i < at ? 'done' : i === at ? (s === 'closed' ? 'now final' : 'now') : '';
+    const li = el('li', undefined, cls);
+    li.append(el('span', `0${i + 1}`, 'k'), STATUS_LABEL[s]);
     if (i === at) li.setAttribute('aria-current', 'step');
-    path.append(li);
+    stages.append(li);
   });
 
   const actions = el('div', undefined, 'rec-actions');
   const move = (s: Status, cls: string) =>
     button(`Mark ${STATUS_LABEL[s].toLowerCase()}`, () => setStatus(session, row.id, s), cls);
   if (row.status === 'open')
-    actions.append(move('in_review', 'btn primary'), move('closed', 'btn'));
+    actions.append(move('in_review', 'fn-btn primary'), move('closed', 'fn-btn'));
   else if (row.status === 'in_review')
-    actions.append(move('closed', 'btn primary'), move('open', 'btn quiet'));
-  else actions.append(move('open', 'btn'), move('in_review', 'btn quiet'));
+    actions.append(move('closed', 'fn-btn primary'), move('open', 'fn-btn flat'));
+  else actions.append(move('open', 'fn-btn'), move('in_review', 'fn-btn flat'));
   if (renaming?.id !== row.id)
     actions.append(
       button(
@@ -263,11 +275,11 @@ function recordHead(row: InspectionRow): HTMLElement[] {
         async () => {
           renaming = { id: row.id, text: row.title };
         },
-        'btn quiet',
+        'fn-btn flat',
       ),
     );
 
-  const out: HTMLElement[] = [top, facts, path, actions];
+  const out: HTMLElement[] = [line1, title, spec, stages, actions];
   if (renaming?.id === row.id) {
     const form = el('form', undefined, 'rename');
     const input = el('input');
@@ -284,26 +296,26 @@ function recordHead(row: InspectionRow): HTMLElement[] {
         void render();
       }
     });
-    const save = el('button', 'Save title', 'btn primary');
+    const save = el('button', 'Save title', 'fn-btn primary');
     save.type = 'submit';
     const cancel = button(
       'Cancel',
       async () => {
         renaming = null;
       },
-      'btn quiet',
+      'fn-btn flat',
     );
     form.append(input, save, cancel);
     form.addEventListener('submit', (e) => {
       e.preventDefault();
-      const title = input.value.trim();
-      if (!title) {
+      const t = input.value.trim();
+      if (!t) {
         input.setAttribute('aria-invalid', 'true');
         input.focus();
         return;
       }
       void act(async () => {
-        await editInspection(session, row.id, { title });
+        await editInspection(session, row.id, { title: t });
         renaming = null;
       }, save);
     });
@@ -323,6 +335,20 @@ function fieldValue(key: string, v: unknown): string {
   return typeof v === 'string' ? v : JSON.stringify(v);
 }
 
+/** Five bars of rising height; as many filled as the severity. */
+function meter(severity: number): HTMLSpanElement {
+  const m = el('span', undefined, 'meter');
+  const bars = el('span', undefined, 'bars');
+  bars.setAttribute('aria-hidden', 'true');
+  for (let i = 1; i <= 5; i++) {
+    const bar = el('i', undefined, i <= severity ? 'on' : undefined);
+    bar.style.height = `${6 + i * 3}px`;
+    bars.append(bar);
+  }
+  m.append(bars, el('b', String(severity)));
+  return m;
+}
+
 async function drawRecord(row: InspectionRow | undefined): Promise<void> {
   $('rec-empty').hidden = row !== undefined;
   $('rec').hidden = row === undefined;
@@ -330,28 +356,34 @@ async function drawRecord(row: InspectionRow | undefined): Promise<void> {
   $('rec-head').replaceChildren(...recordHead(row));
 
   const obsList = await observationsOf(session, row.id);
-  $('obs-count').textContent = obsList.length ? String(obsList.length) : '';
+  $('obs-count').textContent = obsList.length ? `${obsList.length} recorded` : '';
   $('obs-empty').hidden = obsList.length > 0;
   $('observations').replaceChildren(
     ...obsList.map((o) => {
-      const li = el('li', undefined, 'obs');
+      const li = el('li', undefined, o.severity >= 4 ? 'obs high' : 'obs');
       li.dataset['id'] = o.id;
-      const box = el('span', String(o.severity), o.severity >= 4 ? 'sevbox high' : 'sevbox');
-      box.setAttribute('aria-hidden', 'true');
       const parts = el('div', undefined, 'facts-line');
       parts.append(`Severity ${o.severity}`);
-      if (o.reading !== undefined)
-        parts.append(' · Reading ', el('span', String(o.reading), 'mono'));
-      if (o.openConflicts > 0) parts.append(' · ', el('span', 'conflicting edits', 'flag'));
-      li.append(box, el('span', o.note ?? '', 'note'), parts);
-      if (o.severity < 5) {
-        const raise = button(
-          'Raise severity',
-          () => editObservation(session, o.id, { severity: o.severity + 1 }),
-          'btn sm quiet act',
+      if (o.reading !== undefined) parts.append(` · Reading ${o.reading}`);
+      if (o.openConflicts > 0) parts.append(' · ', el('span', '⚠ conflicting edits', 'flag'));
+      li.append(
+        meter(o.severity),
+        el('span', o.note ?? '', 'note'),
+        el(
+          'span',
+          o.reading === undefined ? 'no reading' : String(o.reading),
+          o.reading === undefined ? 'rd none' : 'rd',
+        ),
+        parts,
+      );
+      if (o.severity < 5)
+        li.append(
+          button(
+            'Raise severity',
+            () => editObservation(session, o.id, { severity: o.severity + 1 }),
+            'fn-btn sm flat act',
+          ),
         );
-        li.append(raise);
-      }
       return li;
     }),
   );
@@ -361,27 +393,24 @@ async function drawRecord(row: InspectionRow | undefined): Promise<void> {
     ...history.map((h, i) => {
       const li = el('li', undefined, h.concurrentWith ? 'concurrent' : undefined);
       const what = h.kind === 'delete' ? 'Deleted' : i === 0 ? 'Created' : 'Changed';
-      li.append(el('div', what, 'what'));
-      const entries = Object.entries(h.fields);
-      if (entries.length > 0) {
-        const changes = el('ul', undefined, 'changes');
-        for (const [k, v] of entries) {
-          const c = el('li');
-          c.append(`${fieldLabel(k)}: `, el('b', fieldValue(k, v)));
-          changes.append(c);
-        }
-        li.append(changes);
+      li.append(el('span', `#${h.seq}`, 'seq'), el('span', what, 'what'));
+      const changes = el('ul', undefined, 'changes');
+      for (const [k, v] of Object.entries(h.fields)) {
+        const c = el('li');
+        c.append(`${fieldLabel(k)} `, el('b', fieldValue(k, v)));
+        changes.append(c);
       }
+      li.append(changes);
       const by = el('div', undefined, 'by');
       by.append(
-        `schema v${h.schemaVersion} · ${h.by === replica.id ? 'this device' : `device ${h.by.slice(0, 8)}`} · change ${h.seq}`,
+        `schema v${h.schemaVersion} · ${h.by === replica.id ? 'this device' : `device ${h.by.slice(0, 8)}`}`,
       );
       if (h.concurrentWith)
         by.append(
           ' · ',
           el(
             'span',
-            `at the same time as ${h.concurrentWith} other change${h.concurrentWith === 1 ? '' : 's'}`,
+            `⚠ made at the same time as ${h.concurrentWith} other change${h.concurrentWith === 1 ? '' : 's'}`,
             'flag',
           ),
         );
@@ -403,7 +432,7 @@ async function draw(): Promise<void> {
   $('inspections').replaceChildren(...rows.map(inspectionRow));
   $('insp-empty').hidden = rows.length > 0;
   const open = rows.filter((r) => r.status !== 'closed').length;
-  $('insp-count').textContent = rows.length ? `${open} active · ${rows.length} total` : '';
+  $('insp-count').textContent = rows.length ? `${open} active / ${rows.length}` : '';
 
   await drawRecord(rows.find((r) => r.id === selected));
 
@@ -413,21 +442,25 @@ async function draw(): Promise<void> {
   $('conflict-empty').hidden = conflicts.length > 0;
   const openCount = conflicts.filter((c) => c.status === 'open').length;
   $('conflict-count').textContent = conflicts.length
-    ? `${openCount} open · ${conflicts.length - openCount} settled`
+    ? `${openCount} open / ${conflicts.length - openCount} settled`
     : '';
   $('conflicts').replaceChildren(
     ...conflicts.map((c) => {
-      const tr = el('tr');
+      const tr = el('tr', undefined, c.status === 'open' ? 'open' : undefined);
       const rec = el('td', undefined, 'rec');
       rec.dataset['h'] = 'Record';
       const name = c.collection === 'inspections' ? titles.get(c.recordId) : notes.get(c.recordId);
       rec.append(
         name || `${c.collection} ${c.recordId.slice(0, 8)}`,
-        el('span', c.collection === 'inspections' ? 'Inspection' : 'Observation', 'kind'),
+        el(
+          'span',
+          `${c.collection === 'inspections' ? 'Inspection' : 'Observation'} · REF ${ref(c.recordId)}`,
+          'sub',
+        ),
       );
       const field = el('td', c.field);
-      field.dataset['h'] = 'Field';
-      field.append(el('span', RULE[`${c.collection}/${c.field}`] ?? 'last writer wins', 'kind'));
+      field.dataset['h'] = 'Field and rule';
+      field.append(el('span', RULE[`${c.collection}/${c.field}`] ?? 'last writer wins', 'sub'));
       const vals = el('td');
       vals.dataset['h'] = 'Competing values';
       const list = el('div', undefined, 'vals');
@@ -443,13 +476,30 @@ async function draw(): Promise<void> {
         el(
           'span',
           c.status === 'open' ? 'Open' : 'Settled',
-          `cstate ${c.status === 'open' ? 'open' : 'settled'}`,
+          `cst ${c.status === 'open' ? 'open' : 'settled'}`,
         ),
       );
       tr.append(rec, field, vals, result, state);
       return tr;
     }),
   );
+  await showQueue();
+}
+
+/** How many accepted changes the relay has not acknowledged yet (real data from status()). */
+async function showQueue(): Promise<void> {
+  const peers = Object.values((await replica.status()).peers);
+  const queue = $('queue');
+  if (peers.length === 0) {
+    queue.textContent = 'never synced';
+    return;
+  }
+  const waiting = Math.max(...peers.map((p) => p.pendingOps));
+  queue.textContent =
+    waiting === 0 ? 'queue empty' : `${waiting} change${waiting === 1 ? '' : 's'} queued`;
+  // "Up to date" is only true until the next local change; say so once one is queued.
+  if (waiting > 0 && $('sync-state').dataset['state'] === 'synced')
+    status(MESSAGES.unshared, 'ready');
 }
 
 // ---------------------------------------------------------------- new inspection

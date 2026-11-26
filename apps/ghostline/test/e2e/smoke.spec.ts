@@ -12,7 +12,7 @@ test('two devices share a request and a claim through the relay', async ({ brows
   // Alice asks for help while "offline" (nothing synced yet).
   await alice.getByPlaceholder('What is needed?').fill('Sandbags for the river path');
   await alice.getByPlaceholder('Tags, comma separated').fill('flood, urgent');
-  await alice.getByRole('button', { name: 'Ask for help' }).click();
+  await alice.getByRole('button', { name: 'Post request' }).click();
   await expect(alice.locator('#requests li')).toContainText(['Sandbags for the river path']);
   await expect(bob.locator('#requests li')).toHaveCount(0);
 
