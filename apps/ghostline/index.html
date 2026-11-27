@@ -3,109 +3,1196 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>GHOSTLINE</title>
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#faf7f2" />
+    <meta name="description" content="Ghostline: a quiet line between neighbours, even offline." />
+    <title>Ghostline</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%230f766e'/%3E%3Cg fill='none' stroke='%23ffffff' stroke-width='3.6' stroke-linecap='round'%3E%3Cpath d='M27.07 12.93A10 10 0 0 0 11.34 25'/%3E%3Cpath d='M15 28.66A10 10 0 0 0 30 20H21.5'/%3E%3C/g%3E%3Ccircle cx='21.5' cy='20' r='3' fill='%23f4a08c'/%3E%3C/svg%3E"
+    />
     <style>
+      /*
+       * Ghostline -- warm neighbourhood feed. Off-white ground, deep ink, teal for every action,
+       * muted coral only for the people-facing moments that need attention. Page-local styles.
+       */
       :root {
-        font-family: system-ui, sans-serif;
-        color-scheme: light dark;
+        color-scheme: light;
+        --gl-ground: #faf7f2;
+        --gl-paper: #ffffff;
+        --gl-sand: #f3eee6;
+        --gl-ink: #1f2328;
+        --gl-ink-2: #51575e;
+        --gl-ink-3: #686d73;
+        --gl-line: #ebe4d9;
+        --gl-line-2: #d9d0c2;
+        --gl-teal: #0f766e;
+        --gl-teal-dark: #0b5d57;
+        --gl-teal-wash: #e2f1ee;
+        --gl-coral: #b54a33;
+        --gl-coral-wash: #fbebe5;
+        --gl-display:
+          'Segoe UI Variable Display', 'Avenir Next', 'Helvetica Neue', 'Segoe UI', system-ui,
+          sans-serif;
+        --gl-text:
+          'Segoe UI Variable Text', 'Segoe UI', 'Helvetica Neue', system-ui, -apple-system, Roboto,
+          Arial, sans-serif;
+        --gl-focus: 0 0 0 3px rgba(15, 118, 110, 0.35);
+      }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html {
+        -webkit-text-size-adjust: 100%;
+        scroll-padding-top: 90px;
       }
       body {
-        margin: 0 auto;
-        max-width: 980px;
-        padding: 1rem;
-      }
-      header {
-        display: flex;
-        gap: 1rem;
-        align-items: center;
-        flex-wrap: wrap;
-      }
-      h1 {
         margin: 0;
-        letter-spacing: 0.1em;
+        font-family: var(--gl-text);
+        font-size: 16px;
+        line-height: 1.55;
+        color: var(--gl-ink);
+        background: var(--gl-ground);
+        -webkit-font-smoothing: antialiased;
       }
-      main {
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+      button,
+      input,
+      textarea {
+        font: inherit;
+        color: inherit;
+      }
+      :focus-visible {
+        outline: none;
+        box-shadow: var(--gl-focus);
+        border-radius: 8px;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      .skip {
+        position: absolute;
+        left: 16px;
+        top: -60px;
+        z-index: 40;
+        padding: 10px 16px;
+        border-radius: 10px;
+        background: var(--gl-teal);
+        color: #fff;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .skip:focus {
+        top: 12px;
+      }
+      .gl-mark {
+        flex: none;
+      }
+      .gl-mark .line {
+        stroke: var(--gl-teal);
+      }
+      .gl-mark .node {
+        fill: var(--gl-teal);
+      }
+      .gl-mark .node.warm {
+        fill: var(--gl-coral);
+      }
+
+      /* ------------------------------------------------------------ header */
+      .gl-top {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        background: rgba(255, 255, 255, 0.96);
+        border-bottom: 1px solid var(--gl-line);
+      }
+      .gl-top-in {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 10px 28px;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        min-height: 70px;
+      }
+      .gl-brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        text-decoration: none;
+        color: inherit;
+      }
+      .gl-brand .gl-mark {
+        width: 40px;
+        height: 40px;
+      }
+      .gl-brand b {
+        display: block;
+        font-family: var(--gl-display);
+        font-size: 23px;
+        font-weight: 750;
+        letter-spacing: -0.025em;
+        line-height: 1;
+      }
+      .gl-brand span {
+        display: block;
+        margin-top: 3px;
+        font-size: 12.5px;
+        color: var(--gl-ink-3);
+      }
+      .gl-spacer {
+        flex: 1;
+      }
+      .gl-sync {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .gl-sync-text {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 1.5rem;
+        text-align: right;
+        line-height: 1.3;
+        min-width: 0;
       }
-      @media (max-width: 760px) {
-        main {
-          grid-template-columns: 1fr;
+      .sync-state {
+        display: inline-flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--gl-ink-2);
+        min-width: 0;
+      }
+      .sync-state .dot {
+        width: 9px;
+        height: 9px;
+        flex: none;
+        border-radius: 50%;
+        background: var(--gl-ink-3);
+      }
+      .sync-state[data-state='synced'],
+      .sync-state[data-state='syncing'] {
+        color: var(--gl-teal);
+      }
+      .sync-state[data-state='synced'] .dot,
+      .sync-state[data-state='syncing'] .dot {
+        background: var(--gl-teal);
+      }
+      .sync-state[data-state='syncing'] .dot {
+        animation: gl-pulse 1s ease-in-out infinite;
+      }
+      .sync-state[data-state='offline'],
+      .sync-state[data-state='error'],
+      .sync-state[data-state='partial'] {
+        color: var(--gl-coral);
+      }
+      .sync-state[data-state='offline'] .dot,
+      .sync-state[data-state='error'] .dot,
+      .sync-state[data-state='partial'] .dot {
+        background: var(--gl-coral);
+      }
+      @keyframes gl-pulse {
+        50% {
+          opacity: 0.3;
         }
       }
-      section {
-        border: 1px solid #8884;
-        border-radius: 8px;
-        padding: 0.75rem;
+      #status {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
-      ul {
-        list-style: none;
-        padding: 0;
+      .gl-queue {
+        font-size: 12.5px;
+        color: var(--gl-ink-3);
       }
-      li {
-        border-top: 1px solid #8883;
-        padding: 0.5rem 0;
+      .detail-toggle {
+        border: 0;
+        background: none;
+        padding: 0 2px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--gl-ink-2);
+        text-decoration: underline;
+        text-underline-offset: 3px;
+        cursor: pointer;
+        min-height: 28px;
       }
-      form {
-        display: grid;
-        gap: 0.4rem;
+      .sync-detail {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 28px 10px;
+        text-align: right;
+        font-family: ui-monospace, Consolas, monospace;
+        font-size: 12.5px;
+        color: var(--gl-ink-2);
+        overflow-wrap: anywhere;
       }
-      .meta {
-        opacity: 0.7;
-        font-size: 0.85em;
-      }
-      .tag {
-        display: inline-block;
-        border: 1px solid #8886;
-        border-radius: 999px;
-        padding: 0 0.5em;
-        margin-right: 0.25em;
-        font-size: 0.8em;
-      }
-      .notice.open {
+      .gl-offline {
+        background: var(--gl-coral-wash);
+        color: #8a3423;
+        border-bottom: 1px solid #f1cfc3;
+        font-size: 14.5px;
         font-weight: 600;
       }
-      button {
+      .gl-offline p {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 9px 28px;
+      }
+      body[data-online='true'] .gl-offline {
+        display: none;
+      }
+
+      /* ------------------------------------------------------------ buttons */
+      .gl-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-height: 42px;
+        padding: 0 18px;
+        border-radius: 999px;
+        border: 1.5px solid var(--gl-line-2);
+        background: var(--gl-paper);
+        color: var(--gl-ink);
+        font-size: 15px;
+        font-weight: 650;
+        cursor: pointer;
+        white-space: nowrap;
+        transition:
+          background-color 0.12s,
+          border-color 0.12s,
+          color 0.12s;
+      }
+      .gl-btn:hover {
+        border-color: var(--gl-ink-3);
+      }
+      .gl-btn:disabled {
+        opacity: 0.6;
+        cursor: progress;
+      }
+      .gl-btn.go {
+        background: var(--gl-teal);
+        border-color: var(--gl-teal);
+        color: #fff;
+      }
+      .gl-btn.go:hover {
+        background: var(--gl-teal-dark);
+        border-color: var(--gl-teal-dark);
+      }
+      .gl-btn.plain {
+        border-color: transparent;
+        background: transparent;
+        color: var(--gl-teal);
+        padding: 0 12px;
+      }
+      .gl-btn.plain:hover {
+        background: var(--gl-teal-wash);
+      }
+      .gl-btn.muted {
+        border-color: transparent;
+        background: transparent;
+        color: var(--gl-ink-3);
+        padding: 0 12px;
+      }
+      .gl-btn.muted:hover {
+        background: var(--gl-sand);
+        color: var(--gl-ink);
+      }
+      .gl-btn.metoo {
+        border-color: #efc9bd;
+        color: var(--gl-coral);
+        background: var(--gl-paper);
+      }
+      .gl-btn.metoo:hover {
+        background: var(--gl-coral-wash);
+        border-color: var(--gl-coral);
+      }
+      .gl-btn svg {
+        width: 18px;
+        height: 18px;
+        flex: none;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      #sync[aria-busy='true'] svg {
+        animation: gl-spin 1s linear infinite;
+      }
+      @keyframes gl-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* ------------------------------------------------------------ welcome + composer */
+      .gl-page {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 34px 28px 72px;
+      }
+      .gl-welcome h1 {
+        font-family: var(--gl-display);
+        font-size: clamp(30px, 3.4vw, 42px);
+        font-weight: 750;
+        letter-spacing: -0.03em;
+        line-height: 1.1;
+      }
+      .gl-welcome h1 em {
+        font-style: normal;
+        color: var(--gl-teal);
+      }
+      .gl-welcome p {
+        margin-top: 8px;
+        font-size: 17px;
+        color: var(--gl-ink-2);
+        max-width: 640px;
+      }
+      .gl-compose {
+        margin-top: 22px;
+        background: var(--gl-paper);
+        border: 1px solid var(--gl-line);
+        border-radius: 22px;
+        padding: 8px;
+        box-shadow:
+          0 1px 2px rgba(31, 35, 40, 0.04),
+          0 14px 30px -22px rgba(31, 35, 40, 0.25);
+      }
+      .gl-tabs {
+        display: flex;
+        gap: 6px;
+        padding: 4px;
+        background: var(--gl-sand);
+        border-radius: 16px;
+        width: max-content;
+        max-width: 100%;
+      }
+      .gl-tabs [role='tab'] {
+        min-height: 42px;
+        padding: 0 18px;
+        border: 0;
+        border-radius: 12px;
+        background: transparent;
+        font-weight: 650;
+        font-size: 15px;
+        color: var(--gl-ink-2);
         cursor: pointer;
       }
-      #status {
-        font-size: 0.9em;
+      .gl-tabs [role='tab'][aria-selected='true'] {
+        background: var(--gl-paper);
+        color: var(--gl-ink);
+        box-shadow: 0 1px 3px rgba(31, 35, 40, 0.12);
+      }
+      .gl-form {
+        padding: 16px 16px 12px;
+        display: grid;
+        gap: 12px;
+      }
+      .gl-field {
+        display: grid;
+        gap: 6px;
+        min-width: 0;
+      }
+      .gl-field > span {
+        font-size: 14px;
+        font-weight: 650;
+      }
+      .gl-field .opt {
+        font-weight: 400;
+        color: var(--gl-ink-3);
+      }
+      .gl-row {
+        display: grid;
+        grid-template-columns: 1.4fr 1fr;
+        gap: 12px;
+      }
+      input[type='text'],
+      textarea {
+        width: 100%;
+        min-height: 46px;
+        padding: 10px 14px;
+        border: 1.5px solid var(--gl-line-2);
+        border-radius: 14px;
+        background: var(--gl-paper);
+      }
+      .gl-lead {
+        font-family: var(--gl-display);
+        font-size: 20px;
+        font-weight: 600;
+        min-height: 54px !important;
+      }
+      input::placeholder,
+      textarea::placeholder {
+        color: #a9a49b;
+        font-weight: 400;
+      }
+      input:focus-visible,
+      textarea:focus-visible {
+        border-color: var(--gl-teal);
+        border-radius: 14px;
+      }
+      textarea {
+        min-height: 96px;
+        resize: vertical;
+      }
+      [aria-invalid='true'] {
+        border-color: var(--gl-coral) !important;
+        box-shadow: 0 0 0 3px var(--gl-coral-wash) !important;
+      }
+      .gl-err {
+        font-size: 13.5px;
+        font-weight: 600;
+        color: var(--gl-coral);
+      }
+      .gl-err:empty {
+        display: none;
+      }
+      .gl-foot {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+      .gl-foot .say {
+        margin-right: auto;
+        font-size: 13.5px;
+        color: var(--gl-ink-3);
+      }
+      .gl-foot .say.done {
+        color: var(--gl-teal);
+        font-weight: 650;
+      }
+
+      /* ------------------------------------------------------------ attention strip */
+      .gl-attention {
+        margin-top: 22px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 12px 16px;
+        border-radius: 16px;
+        background: var(--gl-coral-wash);
+        color: #7d2f1f;
+      }
+      .gl-attention b {
+        font-weight: 700;
+      }
+      .gl-attention a {
+        margin-left: auto;
+        color: #7d2f1f;
+        font-weight: 650;
+        white-space: nowrap;
+      }
+      .gl-attention .bell {
+        width: 34px;
+        height: 34px;
+        flex: none;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: var(--gl-coral);
+        color: #fff;
+      }
+      .gl-attention svg {
+        width: 18px;
+        height: 18px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      /* ------------------------------------------------------------ layout */
+      .gl-grid {
+        margin-top: 34px;
+        display: grid;
+        grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+        gap: 44px;
+        align-items: start;
+      }
+      .gl-side {
+        display: grid;
+        gap: 34px;
+      }
+      .gl-head {
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        margin-bottom: 6px;
+      }
+      .gl-head h2 {
+        font-family: var(--gl-display);
+        font-size: 24px;
+        font-weight: 750;
+        letter-spacing: -0.02em;
+      }
+      .gl-head .n {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--gl-ink-3);
+      }
+      .gl-sub {
+        font-size: 14.5px;
+        color: var(--gl-ink-2);
+        margin-bottom: 8px;
+      }
+
+      /* ------------------------------------------------------------ request feed */
+      .gl-feed {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .gl-req {
+        display: grid;
+        grid-template-columns: 48px minmax(0, 1fr) auto;
+        gap: 4px 16px;
+        padding: 20px 0;
+        border-bottom: 1px solid var(--gl-line);
+      }
+      .gl-who {
+        grid-row: 1 / span 3;
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-weight: 750;
+        font-size: 15px;
+        letter-spacing: 0.02em;
+        border: 2px dashed var(--gl-line-2);
+        color: var(--gl-ink-3);
+        background: var(--gl-paper);
+      }
+      .gl-who svg {
+        width: 22px;
+        height: 22px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .gl-req[data-state='claimed'] .gl-who {
+        border: 0;
+        background: var(--gl-teal);
+        color: #fff;
+      }
+      .gl-req[data-state='mine'] .gl-who {
+        border: 0;
+        background: var(--gl-teal);
+        color: #fff;
+        box-shadow:
+          0 0 0 3px var(--gl-paper),
+          0 0 0 5px var(--gl-teal);
+      }
+      .gl-req[data-state='done'] .gl-who {
+        border: 0;
+        background: var(--gl-sand);
+        color: var(--gl-ink-3);
+      }
+      .gl-req h3 {
+        font-family: var(--gl-display);
+        font-size: 19px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        line-height: 1.3;
+        overflow-wrap: anywhere;
+      }
+      .gl-req[data-state='done'] h3 {
+        color: var(--gl-ink-3);
+      }
+      .gl-req .body {
+        grid-column: 2;
+        min-width: 0;
+      }
+      .gl-req .details {
+        margin-top: 4px;
+        color: var(--gl-ink-2);
+        overflow-wrap: anywhere;
+      }
+      .gl-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 12px;
+        margin-top: 8px;
+      }
+      .tag {
+        font-size: 14px;
+        font-weight: 650;
+        color: var(--gl-teal);
+      }
+      .tag::before {
+        content: '#';
+        opacity: 0.6;
+      }
+      .gl-owner {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 4px 12px;
+        margin-top: 8px;
+        font-size: 14px;
+      }
+      .meta {
+        color: var(--gl-ink-2);
+        font-weight: 600;
+      }
+      .gl-req[data-state='open'] .meta {
+        color: var(--gl-coral);
+      }
+      .gl-req[data-state='done'] .meta {
+        color: var(--gl-ink-3);
+        font-weight: 400;
+      }
+      .gl-voices {
+        color: var(--gl-ink-3);
+      }
+      .gl-req .acts {
+        grid-column: 3;
+        grid-row: 1 / span 3;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-width: 150px;
+      }
+      .gl-req .more {
+        grid-column: 2 / -1;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 2px;
+        margin: 6px 0 0 -12px;
+      }
+      .gl-inline {
+        grid-column: 2 / -1;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .gl-inline input,
+      .gl-inline textarea {
+        flex: 1 1 220px;
+      }
+
+      /* ------------------------------------------------------------ side panels */
+      .gl-panel {
+        background: var(--gl-paper);
+        border: 1px solid var(--gl-line);
+        border-radius: 20px;
+        padding: 20px 22px 8px;
+      }
+      .gl-panel.alert {
+        border-color: #f0cfc4;
+      }
+      .gl-board {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .gl-ann {
+        padding: 16px 0;
+        border-top: 1px solid var(--gl-line);
+      }
+      .gl-ann:first-child {
+        border-top: 0;
+      }
+      .gl-ann .kind {
+        font-size: 12.5px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--gl-teal);
+      }
+      .gl-ann[data-draft='true'] .kind {
+        color: var(--gl-coral);
+      }
+      .gl-ann h3 {
+        margin-top: 3px;
+        font-family: var(--gl-display);
+        font-size: 18px;
+        font-weight: 700;
+        line-height: 1.3;
+        overflow-wrap: anywhere;
+      }
+      .gl-ann .text {
+        margin-top: 4px;
+        color: var(--gl-ink-2);
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .gl-ann .text.none {
+        color: var(--gl-ink-3);
+        font-style: italic;
+      }
+      .gl-ann .by {
+        margin-top: 6px;
+        font-size: 13.5px;
+        color: var(--gl-ink-3);
+      }
+      .gl-ann .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin: 10px 0 0 -12px;
+      }
+      .gl-ann .row .gl-btn.go {
+        margin-left: 12px;
+      }
+      .gl-notes {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .gl-note {
+        display: grid;
+        grid-template-columns: 30px minmax(0, 1fr);
+        gap: 2px 12px;
+        padding: 14px 0;
+        border-top: 1px solid var(--gl-line);
+      }
+      .gl-note:first-child {
+        border-top: 0;
+      }
+      .gl-note .ic {
+        grid-row: 1 / span 3;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: var(--gl-sand);
+        color: var(--gl-ink-3);
+      }
+      .gl-note.open .ic {
+        background: var(--gl-coral);
+        color: #fff;
+      }
+      .gl-note .ic svg {
+        width: 16px;
+        height: 16px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2.2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .gl-note .msg {
+        font-weight: 650;
+        line-height: 1.4;
+      }
+      .gl-note .ref {
+        font-size: 13.5px;
+        color: var(--gl-ink-2);
+        overflow-wrap: anywhere;
+      }
+      .gl-note .st {
+        font-size: 12.5px;
+        font-weight: 700;
+        color: var(--gl-ink-3);
+      }
+      .gl-note.open .st {
+        color: var(--gl-coral);
+      }
+
+      /* empty states */
+      .gl-empty {
+        padding: 26px 0 18px;
+        color: var(--gl-ink-3);
+      }
+      .gl-empty b {
+        display: block;
+        font-family: var(--gl-display);
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--gl-ink-2);
+        margin-bottom: 2px;
+      }
+
+      .gl-foot-note {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 28px 40px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        font-size: 13px;
+        color: var(--gl-ink-3);
+      }
+      .gl-foot-note .gl-mark {
+        width: 20px;
+        height: 20px;
+      }
+      .gl-foot-note code {
+        margin-left: auto;
+        font-size: 12.5px;
+      }
+
+      /* ------------------------------------------------------------ responsive */
+      @media (max-width: 980px) {
+        .gl-grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .gl-side {
+          grid-row: 1;
+        }
+      }
+      @media (max-width: 640px) {
+        html {
+          scroll-padding-top: 130px;
+        }
+        .gl-top-in {
+          flex-wrap: wrap;
+          gap: 8px 12px;
+          padding: 10px 16px;
+        }
+        .gl-brand .gl-mark {
+          width: 34px;
+          height: 34px;
+        }
+        .gl-brand b {
+          font-size: 21px;
+        }
+        .gl-spacer {
+          display: none;
+        }
+        .gl-sync {
+          width: 100%;
+          justify-content: space-between;
+        }
+        .gl-sync-text {
+          text-align: left;
+        }
+        .sync-state {
+          justify-content: flex-start;
+        }
+        #status {
+          white-space: normal;
+        }
+        .sync-detail {
+          text-align: left;
+          padding: 0 16px 10px;
+        }
+        .gl-offline p {
+          padding: 9px 16px;
+        }
+        .gl-page {
+          padding: 22px 16px 56px;
+        }
+        .gl-compose {
+          border-radius: 18px;
+        }
+        .gl-tabs {
+          width: 100%;
+        }
+        .gl-tabs [role='tab'] {
+          flex: 1;
+          padding: 0 10px;
+          min-height: 44px;
+        }
+        .gl-form {
+          padding: 14px 8px 8px;
+        }
+        .gl-row {
+          grid-template-columns: 1fr;
+        }
+        .gl-btn,
+        .detail-toggle {
+          min-height: 44px;
+        }
+        .gl-attention {
+          flex-wrap: wrap;
+        }
+        .gl-attention a {
+          margin-left: 48px;
+        }
+        .gl-grid {
+          gap: 32px;
+          margin-top: 26px;
+        }
+        .gl-req {
+          grid-template-columns: 44px minmax(0, 1fr);
+        }
+        .gl-who {
+          width: 44px;
+          height: 44px;
+          grid-row: 1;
+        }
+        .gl-req .body {
+          grid-column: 2;
+        }
+        .gl-req .acts {
+          grid-column: 1 / -1;
+          grid-row: auto;
+          flex-direction: row;
+          margin-top: 12px;
+          min-width: 0;
+        }
+        .gl-req .acts .gl-btn {
+          flex: 1;
+        }
+        .gl-req .more {
+          grid-column: 1 / -1;
+          margin-left: -12px;
+        }
+        .gl-inline {
+          grid-column: 1 / -1;
+        }
+        .gl-panel {
+          padding: 18px 16px 6px;
+          border-radius: 18px;
+        }
+        .gl-foot-note {
+          padding: 0 16px 32px;
+        }
+        .gl-foot-note code {
+          margin-left: 0;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation: none !important;
+          transition: none !important;
+        }
       }
     </style>
   </head>
-  <body>
-    <header>
-      <h1>GHOSTLINE</h1>
-      <span>device: <strong id="device"></strong></span>
-      <button id="sync" type="button">Sync</button>
-      <span id="status" role="status"></span>
+  <body data-online="true">
+    <a class="skip" href="#main">Skip to the neighbourhood feed</a>
+    <!--
+      The Ghostline mark: one continuous line drawn as a G through four neighbours. It breaks once
+      and carries on, as a neighbourhood does through an outage. Two of the points are warm.
+    -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol id="gl-mark" viewBox="0 0 40 40">
+        <rect width="40" height="40" rx="10" fill="#0f766e" />
+        <g fill="none" stroke="#ffffff" stroke-width="3.6" stroke-linecap="round">
+          <path d="M27.07 12.93A10 10 0 0 0 11.34 25" />
+          <path d="M15 28.66A10 10 0 0 0 30 20H21.5" />
+        </g>
+        <circle cx="21.5" cy="20" r="3" fill="#f4a08c" />
+      </symbol>
+    </svg>
+
+    <header class="gl-top">
+      <div class="gl-top-in">
+        <div class="gl-brand">
+          <svg class="gl-mark" viewBox="0 0 40 40" aria-hidden="true">
+            <use href="#gl-mark" />
+          </svg>
+          <div>
+            <b>Ghostline</b>
+            <span>A quiet line between neighbours</span>
+          </div>
+        </div>
+        <span class="gl-spacer"></span>
+        <div class="gl-sync">
+          <div class="gl-sync-text">
+            <div class="sync-state" id="sync-state" data-state="ready">
+              <span class="dot" aria-hidden="true"></span>
+              <span id="status" role="status"></span>
+              <button type="button" class="detail-toggle" id="sync-detail-toggle" hidden>
+                Details
+              </button>
+            </div>
+            <span class="gl-queue" id="queue"></span>
+          </div>
+          <button id="sync" class="gl-btn go" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"
+              />
+            </svg>
+            <span>Sync</span>
+          </button>
+        </div>
+      </div>
+      <p class="sync-detail" id="sync-detail" hidden></p>
     </header>
-    <main>
-      <section aria-labelledby="ann-h">
-        <h2 id="ann-h">Announcements</h2>
-        <form id="ann-form">
-          <input name="title" placeholder="Title" required />
-          <textarea name="body" placeholder="Message"></textarea>
-          <button type="submit">Save draft</button>
-        </form>
-        <ul id="announcements"></ul>
+    <div class="gl-offline" role="note">
+      <p>
+        You're offline. Keep going: everything you post is saved on this device and shared when you
+        press Sync again.
+      </p>
+    </div>
+
+    <main class="gl-page" id="main">
+      <section class="gl-welcome" aria-labelledby="welcome-h">
+        <h1 id="welcome-h">Hi <em id="device"></em>, what's happening nearby?</h1>
+        <p>
+          Ask neighbours for a hand, offer yours, or share news with everyone. It works with or
+          without a connection.
+        </p>
+        <div class="gl-compose">
+          <div class="gl-tabs" role="tablist" aria-label="What would you like to post?">
+            <button
+              type="button"
+              role="tab"
+              id="tab-req"
+              aria-selected="true"
+              aria-controls="req-form"
+            >
+              Ask for help
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="tab-ann"
+              aria-selected="false"
+              aria-controls="ann-form"
+              tabindex="-1"
+            >
+              Post an announcement
+            </button>
+          </div>
+          <form id="req-form" class="gl-form" role="tabpanel" aria-labelledby="tab-req" novalidate>
+            <label class="gl-field">
+              <span>What do you need?</span>
+              <input
+                class="gl-lead"
+                type="text"
+                name="title"
+                placeholder="What is needed?"
+                required
+                maxlength="140"
+                autocomplete="off"
+                aria-describedby="req-title-err"
+              />
+              <span class="gl-err" id="req-title-err"></span>
+            </label>
+            <div class="gl-row">
+              <label class="gl-field">
+                <span>Details <span class="opt">optional</span></span>
+                <input type="text" name="details" placeholder="Details" autocomplete="off" />
+              </label>
+              <label class="gl-field">
+                <span>Tags <span class="opt">optional</span></span>
+                <input
+                  type="text"
+                  name="tags"
+                  placeholder="Tags, comma separated"
+                  autocomplete="off"
+                />
+              </label>
+            </div>
+            <div class="gl-foot">
+              <span class="say" id="req-say" aria-live="polite"
+                >Saved on this device, shared when you sync.</span
+              >
+              <button type="submit" class="gl-btn go">Post request</button>
+            </div>
+          </form>
+          <form
+            id="ann-form"
+            class="gl-form"
+            role="tabpanel"
+            aria-labelledby="tab-ann"
+            novalidate
+            hidden
+          >
+            <label class="gl-field">
+              <span>Headline</span>
+              <input
+                class="gl-lead"
+                type="text"
+                name="title"
+                placeholder="Title"
+                required
+                maxlength="140"
+                autocomplete="off"
+                aria-describedby="ann-title-err"
+              />
+              <span class="gl-err" id="ann-title-err"></span>
+            </label>
+            <label class="gl-field">
+              <span>Message <span class="opt">optional</span></span>
+              <textarea name="body" placeholder="Message" rows="3"></textarea>
+            </label>
+            <div class="gl-foot">
+              <span class="say" id="ann-say" aria-live="polite"
+                >Saved as a draft first. Publish it when it is ready.</span
+              >
+              <button type="submit" class="gl-btn go">Save draft</button>
+            </div>
+          </form>
+        </div>
       </section>
-      <section aria-labelledby="req-h">
-        <h2 id="req-h">Requests</h2>
-        <form id="req-form">
-          <input name="title" placeholder="What is needed?" required />
-          <input name="details" placeholder="Details" />
-          <input name="tags" placeholder="Tags, comma separated" />
-          <button type="submit">Ask for help</button>
-        </form>
-        <ul id="requests"></ul>
-      </section>
-      <section aria-labelledby="notices-h" style="grid-column: 1 / -1">
-        <h2 id="notices-h">Notices</h2>
-        <ul id="notices"></ul>
-      </section>
+
+      <div class="gl-attention" id="attention" hidden>
+        <span class="bell" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="M6 16v-5a6 6 0 1 1 12 0v5l1.5 2h-15ZM10 20.5a2 2 0 0 0 4 0" />
+          </svg>
+        </span>
+        <span id="attention-text"></span>
+        <a href="#notices-section">See notices</a>
+      </div>
+
+      <div class="gl-grid">
+        <section id="requests-section" aria-labelledby="req-h">
+          <div class="gl-head">
+            <h2 id="req-h">Help wanted</h2>
+            <span class="n" id="req-summary"></span>
+          </div>
+          <p class="gl-sub">Open requests first. Claim one to let everyone know you're on it.</p>
+          <ul id="requests" class="gl-feed"></ul>
+          <div class="gl-empty" id="req-empty" hidden>
+            <b>No requests yet</b>
+            Ask for something above, or press Sync to see what your neighbours need.
+          </div>
+        </section>
+
+        <div class="gl-side">
+          <section class="gl-panel alert" id="notices-section" aria-labelledby="notices-h">
+            <div class="gl-head">
+              <h2 id="notices-h">Notices</h2>
+              <span class="n" id="notice-summary"></span>
+            </div>
+            <p class="gl-sub">
+              When two people change the same thing at once, here's what happened.
+            </p>
+            <ul id="notices" class="gl-notes"></ul>
+            <div class="gl-empty" id="notice-empty" hidden>
+              <b>All clear</b>
+              Nobody's changes have crossed.
+            </div>
+          </section>
+          <section class="gl-panel" id="ann-section" aria-labelledby="ann-h">
+            <div class="gl-head">
+              <h2 id="ann-h">Announcements</h2>
+              <span class="n" id="ann-summary"></span>
+            </div>
+            <ul id="announcements" class="gl-board"></ul>
+            <div class="gl-empty" id="ann-empty" hidden>
+              <b>Nothing posted yet</b>
+              A market, a meeting, a road closure: share it with everyone.
+            </div>
+          </section>
+        </div>
+      </div>
     </main>
+
+    <footer class="gl-foot-note">
+      <svg class="gl-mark" viewBox="0 0 40 40" aria-hidden="true"><use href="#gl-mark" /></svg>
+      Everything is saved on this device first, then shared when you sync.
+      <code id="footer-device"></code>
+    </footer>
     <script type="module" src="./src/app.ts"></script>
   </body>
 </html>

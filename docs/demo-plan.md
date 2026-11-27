@@ -18,9 +18,9 @@ Use a terminal with a large font and a browser with two windows side by side.
 | Step | Do                                                                                 | Expect                                                               |
 | ---- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
 | 1    | `npm run dev:ghostline`                                                            | `weave-relay listening on http://127.0.0.1:8787`, Vite on port 5173  |
-| 2    | Open `http://127.0.0.1:5173/?device=alice` and `?device=bob` side by side          | Two empty boards, status "Offline-ready"                             |
-| 3    | Alice: ask for help "Sandbags for the river path", tags `flood, urgent`            | The request appears for Alice only                                   |
-| 4    | Alice: **Sync**. Bob: **Sync**                                                     | "Synced." on both; Bob now sees the request                          |
+| 2    | Open `http://127.0.0.1:5173/?device=alice` and `?device=bob` side by side          | Two empty boards, status "Ready. Your changes are saved on this device." |
+| 3    | Alice: under **Ask for help**, post "Sandbags for the river path", tags `flood, urgent` | The request appears for Alice only; "1 change waiting to be shared" |
+| 4    | Alice: **Sync**. Bob: **Sync**                                                     | "Up to date." on both; Bob now sees the request                      |
 | 5    | Without syncing, both press **Claim** on the request                               | Each sees their own claim                                            |
 | 6    | Bob: **Sync**, Alice: **Sync**, Bob: **Sync**                                       | Both show the same claimant; the other person gets a notice "Someone else was chosen" |
 
@@ -57,7 +57,7 @@ Expected output, in order:
 ## Part 4: proof (15 s)
 
 ```sh
-npm test                 # about 500 tests: properties, scenarios, fuzz, relay end to end
+npm test                 # 767 tests: properties, scenarios, fuzz, relay end to end
 npm run bench            # apply 10,000 ops < 5 s, sync 1,000 ops < 2 s
 ```
 

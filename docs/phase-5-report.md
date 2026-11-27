@@ -4,8 +4,9 @@ Branch `feat/phase-5-advanced`. The Phase 5 work (code, tests, README and change
 commit `3c175c7`; commit `5022b74` added this report. Starting point: `main` at the v0.1.0 merge
 `5e3e5d3`. The v0.1.0 tag is unchanged (tag object `b9e10ff`, commit `4b26e91`).
 
-Status: pull request #2 is merged into `main` (merge commit `0b4b42c`), and the work is released
-as 0.2.0 (2026-11-26).
+Status: pull request #2 is merged into `main` (merge commit `0b4b42c`), and the version is set to
+0.2.0 (pull request #5, merge commit `90633e7`). The `v0.2.0` tag and GitHub release are not
+created yet.
 
 ## Result
 

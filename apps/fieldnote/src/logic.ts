@@ -107,6 +107,35 @@ function checkSeverity(severity: number): number {
   return severity;
 }
 
+/** A plain decimal number: optional sign, digits with an optional dot part, optional exponent. */
+const DECIMAL = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+
+export type ReadingParse =
+  | { readonly ok: true; readonly reading: number | undefined }
+  | { readonly ok: false; readonly error: string };
+
+/**
+ * Parses what a worker typed as a reading. Blank means "no reading" (the field is optional).
+ * Anything else must be a plain finite decimal number: `Number()` alone would turn "abc" into NaN
+ * and "0x10" into 16, so malformed text is refused instead of being stored as a different value.
+ */
+export function parseReading(text: string): ReadingParse {
+  const t = text.trim();
+  if (t === '') return { ok: true, reading: undefined };
+  if (/^[+-]?\d+,\d+$/.test(t))
+    return { ok: false, error: 'Use a dot for decimals, for example 1.5.' };
+  if (!DECIMAL.test(t)) return { ok: false, error: 'Enter a number, for example 0.7 or 12.' };
+  const n = Number(t);
+  if (!Number.isFinite(n)) return { ok: false, error: 'That number is too large.' };
+  return { ok: true, reading: n };
+}
+
+function checkReading(reading: number): number {
+  if (typeof reading !== 'number' || !Number.isFinite(reading))
+    throw new Error('reading must be a finite number');
+  return reading;
+}
+
 export function addObservation(
   s: Session,
   intent: string,
@@ -118,7 +147,7 @@ export function addObservation(
     note: input.note,
     severity: checkSeverity(input.severity),
   };
-  if (input.reading !== undefined) value.reading = input.reading;
+  if (input.reading !== undefined) value.reading = checkReading(input.reading);
   return runAction(s.replica, s.pending, `observation:${intent}`, (mutationId) =>
     obs(s).create(value, { mutationId }),
   );
@@ -132,7 +161,7 @@ export function editObservation(
   const p: Partial<Observation> = {};
   if (patch.note !== undefined) p.note = patch.note;
   if (patch.severity !== undefined) p.severity = checkSeverity(patch.severity);
-  if (patch.reading !== undefined) p.reading = patch.reading;
+  if (patch.reading !== undefined) p.reading = checkReading(patch.reading);
   return runAction(s.replica, s.pending, `obs-edit:${id}:${JSON.stringify(p)}`, (mutationId) =>
     obs(s).update(id, p, { mutationId }),
   );
@@ -172,6 +201,12 @@ export async function listInspections(s: Session): Promise<InspectionRow[]> {
 export async function observationsOf(s: Session, inspectionId: string) {
   const all = await obs(s).query({ where: { inspectionId } });
   return all.map((o) => ({ id: o.id, ...o.value, openConflicts: o.conflicts.length }));
+}
+
+/** Every observation's note by record ID, to name observations in the conflict view. */
+export async function observationNotes(s: Session): Promise<Map<string, string>> {
+  const all = await obs(s).query({ includeDeleted: true });
+  return new Map(all.map((o) => [o.id, o.value.note ?? '']));
 }
 
 /** One line per op of an inspection, oldest first, as written (not migrated) (R2.5). */

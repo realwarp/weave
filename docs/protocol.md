@@ -26,3 +26,12 @@ unreadable op it stops that origin and never skips ahead. The result is `partial
 
 `POST /v1/pull`, `POST /v1/push`, `POST /v1/ack`, `GET /v1/health`. Op lists are one canonical JSON
 op per line. Optional bearer token from `WEAVE_RELAY_TOKEN`.
+
+Opt-in 0.2.0 routes: `GET` and `PUT /v1/snapshot`, `POST /v1/admin/compact` and
+`POST /v1/admin/remove-peer`. Details in the [relay README](../packages/relay/README.md).
+
+## WebSocket (0.2.0)
+
+The same three calls, one JSON text message each, between two replicas with no relay in between
+(`@weave/transport/websocket` and `@weave/transport/websocket/server`). See the
+[transport README](../packages/transport/README.md).

@@ -3,6 +3,9 @@
  * replica; `?schema=1` runs the old v1 schema (to try mixed-version sync). Every button is one
  * intent with a stable mutationId stored in localStorage before the write. User text is rendered
  * with textContent only.
+ *
+ * The forms are static: re-renders after a sync or a change only rebuild the lists and the record
+ * header, so text a worker is typing is never wiped.
  */
 import { createReplica } from '@weave/core';
 import { indexedDbStorage } from '@weave/storage/indexeddb';
@@ -15,12 +18,15 @@ import {
   editObservation,
   inspectionHistory,
   listInspections,
+  observationNotes,
   observationsOf,
+  parseReading,
   setStatus,
+  type InspectionRow,
   type Session,
   type Status,
 } from './logic.js';
-import { STATUS, collectionsV1, collectionsV2 } from './model.js';
+import { collectionsV1, collectionsV2 } from './model.js';
 import { formIntent, localPending } from './pending.js';
 
 const params = new URLSearchParams(location.search);
@@ -29,10 +35,12 @@ const device =
 const version: 1 | 2 = params.get('schema') === '1' ? 1 : 2;
 const token = params.get('token') ?? undefined;
 
-const $ = (id: string): HTMLElement => {
+// ---------------------------------------------------------------- DOM helpers
+
+const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
   if (node === null) throw new Error(`missing #${id}`);
-  return node;
+  return node as T;
 };
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -44,22 +52,85 @@ function el<K extends keyof HTMLElementTagNameMap>(
   if (cls !== undefined) node.className = cls;
   return node;
 }
-function button(label: string, onClick: () => Promise<unknown>): HTMLButtonElement {
-  const b = el('button', label);
+function button(label: string, onClick: () => Promise<unknown>, cls = 'fn-btn'): HTMLButtonElement {
+  const b = el('button', label, cls);
   b.type = 'button';
-  b.addEventListener('click', () => void act(onClick));
+  b.addEventListener('click', () => void act(onClick, b));
   return b;
 }
-const status = (text: string) => ($('status').textContent = text);
 
-async function act(fn: () => Promise<unknown>): Promise<void> {
+const STATUS_LABEL: Record<Status, string> = {
+  open: 'Open',
+  in_review: 'In review',
+  closed: 'Closed',
+};
+const STATUS_ORDER: Status[] = ['open', 'in_review', 'closed'];
+
+/** Status as a three-cell gauge (one, two or three cells filled) plus its name. */
+function statusMark(s: Status): HTMLSpanElement {
+  const span = el('span', undefined, 'st');
+  span.dataset['s'] = s;
+  const g = el('span', undefined, 'g');
+  g.setAttribute('aria-hidden', 'true');
+  const at = STATUS_ORDER.indexOf(s);
+  for (let i = 0; i < 3; i++) g.append(el('i', undefined, i <= at ? 'on' : undefined));
+  span.append(g, STATUS_LABEL[s]);
+  return span;
+}
+
+/** A short, stable reference for a record: the first characters of its record ID. */
+const ref = (id: string) => id.slice(0, 6).toUpperCase();
+
+// ---------------------------------------------------------------- status line
+
+type SyncState = 'ready' | 'syncing' | 'synced' | 'partial' | 'offline' | 'error';
+
+const MESSAGES = {
+  ready: 'Ready. Records are saved on this device.',
+  offline: 'Offline. Records are saved on this device.',
+  backOnline: 'Back online. Press Sync to upload your records.',
+  syncing: 'Syncing records...',
+  synced: 'Up to date.',
+  unshared: 'New records saved here. Press Sync to upload them.',
+  failed: "Couldn't sync. Your records are still saved here. Try again.",
+  schemaOlder: 'Partly up to date. Some changes need a newer schema on this device.',
+  notSettled: 'Still catching up. Press Sync again to finish.',
+  actionFailed: "That didn't work. Please try again.",
+} as const;
+
+function status(text: string, state: SyncState, detail?: string): void {
+  $('status').textContent = text;
+  $('sync-state').dataset['state'] = state;
+  const toggle = $<HTMLButtonElement>('sync-detail-toggle');
+  const box = $('sync-detail');
+  box.textContent = detail ?? '';
+  box.hidden = true;
+  toggle.hidden = detail === undefined;
+  toggle.textContent = 'Details';
+  toggle.setAttribute('aria-expanded', 'false');
+}
+
+function errorDetail(e: unknown): string {
+  if (e instanceof Error) {
+    const code = (e as { code?: unknown }).code;
+    return typeof code === 'string' ? `${code}: ${e.message}` : e.message;
+  }
+  return String(e);
+}
+
+async function act(fn: () => Promise<unknown>, source?: HTMLButtonElement): Promise<void> {
+  if (source !== undefined) source.disabled = true;
   try {
     await fn();
     await render();
   } catch (e) {
-    status(`Error: ${e instanceof Error ? e.message : String(e)}`);
+    status(MESSAGES.actionFailed, 'error', errorDetail(e));
+  } finally {
+    if (source !== undefined && source.isConnected) source.disabled = false;
   }
 }
+
+// ---------------------------------------------------------------- replica
 
 const replica = await createReplica({
   storage: indexedDbStorage({ name: `fieldnote-${device}` }),
@@ -76,188 +147,582 @@ const relay = httpTransport({
   ...(token === undefined ? {} : { token }),
 });
 let selected: string | undefined;
+/** The title being typed in the rename box, kept across re-renders. */
+let renaming: { id: string; text: string } | null = null;
 
 $('device').textContent = device;
-$('schema').textContent = `schema v${version}`;
-document.title = `FIELDNOTE - ${device}`;
+const schemaChip = $('schema');
+schemaChip.textContent = `schema v${version}`;
 if (version === 1) {
-  for (const name of ['site', 'zone'])
-    ($('insp-form').querySelector(`[name=${name}]`) as HTMLInputElement).placeholder =
-      name === 'site' ? 'Location' : '(v2 only)';
-  ($('insp-form').querySelector('[name=zone]') as HTMLInputElement).disabled = true;
+  schemaChip.dataset['old'] = 'true';
+  schemaChip.title = 'This device runs the older schema v1: it writes a single location field';
+}
+document.title = `FIELDNOTE · ${device}`;
+
+const inspForm = $<HTMLFormElement>('insp-form');
+if (version === 1) {
+  $('site-label').firstChild!.textContent = 'Location ';
+  (inspForm.elements.namedItem('site') as HTMLInputElement).placeholder = 'Location';
+  const zone = inspForm.elements.namedItem('zone') as HTMLInputElement;
+  zone.placeholder = 'Needs schema v2';
+  zone.disabled = true;
 }
 
-async function renderDetail(): Promise<void> {
-  const box = $('detail');
-  box.replaceChildren();
-  const row = (await listInspections(session)).find((r) => r.id === selected);
-  if (row === undefined) {
-    box.append(el('p', 'Select an inspection.', 'meta'));
-    return;
-  }
-  box.append(
-    el('h3', row.title),
-    el(
-      'p',
-      `${row.where || 'no location'} - ${row.status} - assigned: ${row.assignees.join(', ') || 'nobody'}`,
-      'meta',
-    ),
-  );
-  const statusRow = el('p');
-  for (const s of STATUS)
-    if (s !== row.status)
-      statusRow.append(button(`Mark ${s}`, () => setStatus(session, row.id, s as Status)));
-  statusRow.append(
-    button('Rename', async () => {
-      const title = prompt('Title', row.title);
-      if (title) await editInspection(session, row.id, { title });
-    }),
-  );
-  box.append(statusRow);
-
-  box.append(el('h4', 'Observations'));
-  const form = el('form');
-  form.id = 'obs-form';
-  const note = el('input');
-  note.name = 'note';
-  note.placeholder = 'Observation';
-  note.required = true;
-  const severity = el('select');
-  severity.name = 'severity';
-  for (let i = 1; i <= 5; i++) severity.append(new Option(`severity ${i}`, String(i)));
-  const reading = el('input');
-  reading.name = 'reading';
-  reading.placeholder = 'Reading (number)';
-  reading.inputMode = 'decimal';
-  const submit = el('button', 'Add observation');
-  submit.type = 'submit';
-  form.append(note, severity, reading, submit);
-  form.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const obsIntent = formIntent(device, localStorage, `observation:${row.id}`);
-    const intent = obsIntent.get();
-    const value = {
-      note: note.value,
-      severity: Number(severity.value),
-      ...(reading.value.trim() ? { reading: Number(reading.value) } : {}),
-    };
-    void act(async () => {
-      await addObservation(session, intent, row.id, value);
-      obsIntent.done();
-    });
-  });
-  box.append(form);
-  const list = el('ul');
-  list.id = 'observations';
-  for (const o of await observationsOf(session, row.id)) {
-    const li = el(
-      'li',
-      `${o.note ?? ''} - severity ${o.severity}${o.reading === undefined ? '' : `, reading ${o.reading}`}`,
-    );
-    li.append(
-      button('Raise severity', () =>
-        editObservation(session, o.id, { severity: Math.min(5, o.severity + 1) }),
-      ),
-    );
-    list.append(li);
-  }
-  box.append(list);
-
-  box.append(el('h4', 'Operation history'));
-  const hist = el('ol', undefined, 'meta');
-  for (const h of await inspectionHistory(session, row.id)) {
-    hist.append(
-      el(
-        'li',
-        `v${h.schemaVersion} ${h.kind} ${JSON.stringify(h.fields)}${h.concurrentWith ? ` - concurrent with ${h.concurrentWith}` : ''}`,
-      ),
-    );
-  }
-  box.append(hist);
+// Severity: five large targets, 1 minor to 5 critical (the field's resolver keeps the higher).
+const sevOpts = $('sev-opts');
+for (let i = 1; i <= 5; i++) {
+  const label = el('label');
+  const input = el('input');
+  input.type = 'radio';
+  input.name = 'severity';
+  input.value = String(i);
+  input.checked = i === 1;
+  input.setAttribute('aria-label', `Severity ${i}`);
+  label.append(input, el('span', String(i), i >= 4 ? 'high' : undefined));
+  sevOpts.append(label);
 }
 
-// Renders run one at a time: a change event and an action can both ask for one, and two
-// overlapping renders would each clear and then fill the same lists.
+// ---------------------------------------------------------------- rendering
+
 let rendering: Promise<void> = Promise.resolve();
 function render(): Promise<void> {
-  rendering = rendering.then(draw, draw);
+  // Background redraws are started with `void render()`: report a failure instead of leaving an
+  // unhandled rejection, and keep the chain usable for the next redraw.
+  rendering = rendering.then(draw).catch((e: unknown) => {
+    status(MESSAGES.actionFailed, 'error', errorDetail(e));
+  });
   return rendering;
 }
 
-async function draw(): Promise<void> {
-  const body = $('inspections');
-  body.replaceChildren();
-  for (const r of await listInspections(session)) {
-    const tr = el('tr', undefined, r.id === selected ? 'selected' : undefined);
-    tr.dataset['id'] = r.id;
-    tr.append(
-      el('td', r.title),
-      el('td', r.where),
-      el('td', `${r.status}${r.openConflicts ? ` (${r.openConflicts} conflict)` : ''}`),
-    );
-    const cell = el('td');
-    cell.append(
-      button('Open', async () => {
-        selected = r.id;
-      }),
-    );
-    tr.append(cell);
-    body.append(tr);
+function select(id: string): void {
+  if (selected !== id) {
+    selected = id;
+    renaming = null;
+    resetObsForm();
   }
-  await renderDetail();
-  const conflicts = $('conflicts');
-  conflicts.replaceChildren();
-  for (const c of await conflictHistory(session)) {
-    const tr = el('tr');
-    tr.append(
-      el('td', `${c.collection}/${c.recordId.slice(0, 8)}`),
-      el('td', c.field),
-      el('td', c.values.join(' | ')),
-      el('td', c.resolved),
-      el('td', c.status),
-    );
-    conflicts.append(tr);
-  }
+  void render().then(() => {
+    if (matchMedia('(max-width: 960px)').matches) $('detail').scrollIntoView({ block: 'start' });
+  });
 }
 
-const inspIntent = formIntent(device, localStorage, 'inspection');
+function inspectionRow(r: InspectionRow): HTMLTableRowElement {
+  const tr = el('tr', undefined, r.id === selected ? 'selected' : undefined);
+  tr.dataset['id'] = r.id;
+  const refCell = el('td', ref(r.id), 'ref');
+  const main = el('td');
+  const b = el('button', r.title, 'title-btn');
+  b.type = 'button';
+  b.setAttribute('aria-pressed', String(r.id === selected));
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    select(r.id);
+  });
+  main.append(b, el('span', r.where || 'No location', r.where ? 'loc' : 'loc none'));
+  if (r.openConflicts > 0)
+    main.append(
+      el('span', `⚠ ${r.openConflicts} open conflict${r.openConflicts === 1 ? '' : 's'}`, 'warn'),
+    );
+  const st = el('td', undefined, 'stc');
+  st.append(statusMark(r.status));
+  tr.append(refCell, main, st);
+  tr.addEventListener('click', () => select(r.id));
+  return tr;
+}
 
-$('insp-form').addEventListener('submit', (event) => {
+function specCell(label: string, value: string, emptyText: string): HTMLDivElement {
+  const d = el('div');
+  d.append(el('div', label, 'cap'), el('div', value || emptyText, value ? 'v' : 'v none'));
+  return d;
+}
+
+function whereParts(row: InspectionRow): { site: string; zone: string } {
+  if (version === 1) return { site: row.where, zone: '' };
+  const [site = '', zone = ''] = row.where.split(' / ');
+  return { site, zone };
+}
+
+function recordHead(row: InspectionRow): HTMLElement[] {
+  const line1 = el('div', undefined, 'line1');
+  line1.append(el('span', 'Inspection', 'cap'), el('span', `REF ${ref(row.id)}`, 'rid'));
+  const title = el('h3', row.title);
+
+  const spec = el('div', undefined, 'spec');
+  const { site, zone } = whereParts(row);
+  if (version === 1) spec.append(specCell('Location', site, 'Not recorded'));
+  else spec.append(specCell('Site', site, 'Not recorded'), specCell('Zone', zone, 'Not recorded'));
+  spec.append(specCell('Assigned', row.assignees.join(', '), 'Nobody'));
+
+  // Status progression. Under concurrency the more advanced status wins (max-rank).
+  const stages = el('ol', undefined, 'stages');
+  stages.setAttribute('aria-label', 'Status progression');
+  const at = STATUS_ORDER.indexOf(row.status);
+  STATUS_ORDER.forEach((s, i) => {
+    const cls = i < at ? 'done' : i === at ? (s === 'closed' ? 'now final' : 'now') : '';
+    const li = el('li', undefined, cls);
+    li.append(el('span', `0${i + 1}`, 'k'), STATUS_LABEL[s]);
+    if (i === at) li.setAttribute('aria-current', 'step');
+    stages.append(li);
+  });
+
+  const actions = el('div', undefined, 'rec-actions');
+  const move = (s: Status, cls: string) =>
+    button(`Mark ${STATUS_LABEL[s].toLowerCase()}`, () => setStatus(session, row.id, s), cls);
+  if (row.status === 'open')
+    actions.append(move('in_review', 'fn-btn primary'), move('closed', 'fn-btn'));
+  else if (row.status === 'in_review')
+    actions.append(move('closed', 'fn-btn primary'), move('open', 'fn-btn flat'));
+  else actions.append(move('open', 'fn-btn'), move('in_review', 'fn-btn flat'));
+  if (renaming?.id !== row.id)
+    actions.append(
+      button(
+        'Rename',
+        async () => {
+          renaming = { id: row.id, text: row.title };
+        },
+        'fn-btn flat',
+      ),
+    );
+
+  const out: HTMLElement[] = [line1, title, spec, stages, actions];
+  if (renaming?.id === row.id) {
+    const form = el('form', undefined, 'rename');
+    const input = el('input');
+    input.type = 'text';
+    input.value = renaming.text;
+    input.setAttribute('aria-label', 'New title');
+    input.maxLength = 140;
+    input.addEventListener('input', () => {
+      if (renaming !== null) renaming.text = input.value;
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        renaming = null;
+        void render();
+      }
+    });
+    const save = el('button', 'Save title', 'fn-btn primary');
+    save.type = 'submit';
+    const cancel = button(
+      'Cancel',
+      async () => {
+        renaming = null;
+      },
+      'fn-btn flat',
+    );
+    form.append(input, save, cancel);
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const t = input.value.trim();
+      if (!t) {
+        input.setAttribute('aria-invalid', 'true');
+        input.focus();
+        return;
+      }
+      void act(async () => {
+        await editInspection(session, row.id, { title: t });
+        renaming = null;
+      }, save);
+    });
+    queueMicrotask(() => input.focus());
+    out.push(form);
+  }
+  return out;
+}
+
+function fieldLabel(key: string): string {
+  return key === 'assignees' ? 'assigned' : key;
+}
+function fieldValue(key: string, v: unknown): string {
+  if (key === 'status' && typeof v === 'string' && v in STATUS_LABEL)
+    return STATUS_LABEL[v as Status];
+  if (Array.isArray(v)) return v.join(', ');
+  return typeof v === 'string' ? v : JSON.stringify(v);
+}
+
+/** Five bars of rising height; as many filled as the severity. */
+function meter(severity: number): HTMLSpanElement {
+  const m = el('span', undefined, 'meter');
+  const bars = el('span', undefined, 'bars');
+  bars.setAttribute('aria-hidden', 'true');
+  for (let i = 1; i <= 5; i++) {
+    const bar = el('i', undefined, i <= severity ? 'on' : undefined);
+    bar.style.height = `${6 + i * 3}px`;
+    bars.append(bar);
+  }
+  m.append(bars, el('b', String(severity)));
+  return m;
+}
+
+async function drawRecord(row: InspectionRow | undefined): Promise<void> {
+  $('rec-empty').hidden = row !== undefined;
+  $('rec').hidden = row === undefined;
+  if (row === undefined) return;
+  $('rec-head').replaceChildren(...recordHead(row));
+
+  const obsList = await observationsOf(session, row.id);
+  $('obs-count').textContent = obsList.length ? `${obsList.length} recorded` : '';
+  $('obs-empty').hidden = obsList.length > 0;
+  $('observations').replaceChildren(
+    ...obsList.map((o) => {
+      const li = el('li', undefined, o.severity >= 4 ? 'obs high' : 'obs');
+      li.dataset['id'] = o.id;
+      const parts = el('div', undefined, 'facts-line');
+      parts.append(`Severity ${o.severity}`);
+      if (o.reading !== undefined) parts.append(` · Reading ${o.reading}`);
+      if (o.openConflicts > 0) parts.append(' · ', el('span', '⚠ conflicting edits', 'flag'));
+      li.append(
+        meter(o.severity),
+        el('span', o.note ?? '', 'note'),
+        el(
+          'span',
+          o.reading === undefined ? 'no reading' : String(o.reading),
+          o.reading === undefined ? 'rd none' : 'rd',
+        ),
+        parts,
+      );
+      if (o.severity < 5)
+        li.append(
+          button(
+            'Raise severity',
+            () => editObservation(session, o.id, { severity: o.severity + 1 }),
+            'fn-btn sm flat act',
+          ),
+        );
+      return li;
+    }),
+  );
+
+  const history = await inspectionHistory(session, row.id);
+  $('history').replaceChildren(
+    ...history.map((h, i) => {
+      const li = el('li', undefined, h.concurrentWith ? 'concurrent' : undefined);
+      const what = h.kind === 'delete' ? 'Deleted' : i === 0 ? 'Created' : 'Changed';
+      li.append(el('span', `#${h.seq}`, 'seq'), el('span', what, 'what'));
+      const changes = el('ul', undefined, 'changes');
+      for (const [k, v] of Object.entries(h.fields)) {
+        const c = el('li');
+        c.append(`${fieldLabel(k)} `, el('b', fieldValue(k, v)));
+        changes.append(c);
+      }
+      li.append(changes);
+      const by = el('div', undefined, 'by');
+      by.append(
+        `schema v${h.schemaVersion} · ${h.by === replica.id ? 'this device' : `device ${h.by.slice(0, 8)}`}`,
+      );
+      if (h.concurrentWith)
+        by.append(
+          ' · ',
+          el(
+            'span',
+            `⚠ made at the same time as ${h.concurrentWith} other change${h.concurrentWith === 1 ? '' : 's'}`,
+            'flag',
+          ),
+        );
+      li.append(by);
+      return li;
+    }),
+  );
+}
+
+const RULE: Record<string, string> = {
+  'inspections/status': 'most advanced status wins',
+  'observations/severity': 'higher severity wins',
+  'inspections/assignees': 'everyone is kept',
+};
+
+async function draw(): Promise<void> {
+  const rows = await listInspections(session);
+  if (selected !== undefined && !rows.some((r) => r.id === selected)) selected = undefined;
+  $('inspections').replaceChildren(...rows.map(inspectionRow));
+  $('insp-empty').hidden = rows.length > 0;
+  const open = rows.filter((r) => r.status !== 'closed').length;
+  $('insp-count').textContent = rows.length ? `${open} active / ${rows.length}` : '';
+
+  await drawRecord(rows.find((r) => r.id === selected));
+
+  const titles = new Map(rows.map((r) => [r.id, r.title]));
+  const notes = await observationNotes(session);
+  const conflicts = await conflictHistory(session);
+  $('conflict-empty').hidden = conflicts.length > 0;
+  const openCount = conflicts.filter((c) => c.status === 'open').length;
+  $('conflict-count').textContent = conflicts.length
+    ? `${openCount} open / ${conflicts.length - openCount} settled`
+    : '';
+  $('conflicts').replaceChildren(
+    ...conflicts.map((c) => {
+      const tr = el('tr', undefined, c.status === 'open' ? 'open' : undefined);
+      const rec = el('td', undefined, 'rec');
+      rec.dataset['h'] = 'Record';
+      const name = c.collection === 'inspections' ? titles.get(c.recordId) : notes.get(c.recordId);
+      rec.append(
+        name || `${c.collection} ${c.recordId.slice(0, 8)}`,
+        el(
+          'span',
+          `${c.collection === 'inspections' ? 'Inspection' : 'Observation'} · REF ${ref(c.recordId)}`,
+          'sub',
+        ),
+      );
+      const field = el('td', c.field);
+      field.dataset['h'] = 'Field and rule';
+      field.append(el('span', RULE[`${c.collection}/${c.field}`] ?? 'last writer wins', 'sub'));
+      const vals = el('td');
+      vals.dataset['h'] = 'Competing values';
+      const list = el('div', undefined, 'vals');
+      const shown = (v: string) => (c.field === 'status' ? fieldValue('status', v) : v);
+      for (const v of c.values)
+        list.append(el('span', shown(v), v === c.resolved ? 'won' : undefined));
+      vals.append(list);
+      const result = el('td', shown(c.resolved), 'result');
+      result.dataset['h'] = 'Result';
+      const state = el('td');
+      state.dataset['h'] = 'State';
+      state.append(
+        el(
+          'span',
+          c.status === 'open' ? 'Open' : 'Settled',
+          `cst ${c.status === 'open' ? 'open' : 'settled'}`,
+        ),
+      );
+      tr.append(rec, field, vals, result, state);
+      return tr;
+    }),
+  );
+  await showQueue();
+}
+
+/** How many accepted changes the relay has not acknowledged yet (real data from status()). */
+async function showQueue(): Promise<void> {
+  const peers = Object.values((await replica.status()).peers);
+  const queue = $('queue');
+  if (peers.length === 0) {
+    queue.textContent = 'never synced';
+    return;
+  }
+  const waiting = Math.max(...peers.map((p) => p.pendingOps));
+  queue.textContent =
+    waiting === 0 ? 'queue empty' : `${waiting} change${waiting === 1 ? '' : 's'} queued`;
+  // "Up to date" is only true until the next local change; say so once one is queued.
+  if (waiting > 0 && $('sync-state').dataset['state'] === 'synced')
+    status(MESSAGES.unshared, 'ready');
+}
+
+// ---------------------------------------------------------------- new inspection
+
+const inspIntent = formIntent(device, localStorage, 'inspection');
+let inspBusy = false;
+inspForm.addEventListener('submit', (event) => {
   event.preventDefault();
-  const form = event.target as HTMLFormElement;
-  const data = new FormData(form);
+  if (inspBusy) return;
+  const title = (inspForm.elements.namedItem('title') as HTMLInputElement).value.trim();
+  const titleInput = inspForm.elements.namedItem('title') as HTMLInputElement;
+  if (!title) {
+    titleInput.setAttribute('aria-invalid', 'true');
+    $('insp-err').textContent = 'Give the inspection a title.';
+    titleInput.focus();
+    return;
+  }
+  const data = new FormData(inspForm);
   // Kept in localStorage until the write is recorded, so a re-submit after a reload is a replay.
   const intent = inspIntent.get();
-  const title = String(data.get('title'));
   const site = String(data.get('site') ?? '').trim();
   const zone = String(data.get('zone') ?? '').trim();
   const input =
     version === 1
       ? { title, ...(site ? { location: site } : {}) }
       : { title, ...(site ? { site } : {}), ...(zone ? { zone } : {}) };
-  void act(async () => {
-    selected = (await createInspection(session, intent, input, [device])).recordId;
-    inspIntent.done();
-    form.reset();
-  });
+  inspBusy = true;
+  void act(
+    async () => {
+      try {
+        selected = (await createInspection(session, intent, input, [device])).recordId;
+      } finally {
+        inspBusy = false;
+      }
+      inspIntent.done();
+      renaming = null;
+      resetObsForm();
+      // Clear only what was submitted, so text typed while saving is kept.
+      for (const f of inspForm.querySelectorAll<HTMLInputElement>('input'))
+        if (f.value === String(data.get(f.name) ?? '')) f.value = '';
+      flash('insp-say', 'Inspection saved on this device.');
+    },
+    inspForm.querySelector<HTMLButtonElement>('button[type="submit"]') ?? undefined,
+  );
+});
+(inspForm.elements.namedItem('title') as HTMLInputElement).addEventListener('input', (e) => {
+  const t = e.target as HTMLInputElement;
+  if (t.value.trim()) {
+    t.removeAttribute('aria-invalid');
+    $('insp-err').textContent = '';
+  }
 });
 
-$('sync').addEventListener(
+const sayTimers = new Map<string, ReturnType<typeof setTimeout>>();
+function flash(id: string, text: string): void {
+  const say = $(id);
+  const idle = say.dataset['idle'] ?? say.textContent ?? '';
+  say.dataset['idle'] = idle;
+  say.textContent = text;
+  say.classList.add('done');
+  clearTimeout(sayTimers.get(id));
+  sayTimers.set(
+    id,
+    setTimeout(() => {
+      say.textContent = idle;
+      say.classList.remove('done');
+    }, 4000),
+  );
+}
+
+// ---------------------------------------------------------------- observations
+
+const obsForm = $<HTMLFormElement>('obs-form');
+const noteInput = obsForm.elements.namedItem('note') as HTMLInputElement;
+const readingInput = obsForm.elements.namedItem('reading') as HTMLInputElement;
+
+function clearErrors(): void {
+  for (const [input, err] of [
+    [noteInput, 'note-err'],
+    [readingInput, 'reading-err'],
+  ] as const) {
+    input.removeAttribute('aria-invalid');
+    $(err).textContent = '';
+  }
+}
+function resetObsForm(): void {
+  obsForm.reset();
+  clearErrors();
+}
+noteInput.addEventListener('input', () => {
+  if (noteInput.value.trim()) {
+    noteInput.removeAttribute('aria-invalid');
+    $('note-err').textContent = '';
+  }
+});
+readingInput.addEventListener('input', () => {
+  if (parseReading(readingInput.value).ok) {
+    readingInput.removeAttribute('aria-invalid');
+    $('reading-err').textContent = '';
+  }
+});
+
+let obsBusy = false;
+obsForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const inspectionId = selected;
+  if (obsBusy || inspectionId === undefined) return;
+  clearErrors();
+  const note = noteInput.value.trim();
+  const parsed = parseReading(readingInput.value);
+  let invalid: HTMLInputElement | undefined;
+  if (!parsed.ok) {
+    readingInput.setAttribute('aria-invalid', 'true');
+    $('reading-err').textContent = parsed.error;
+    invalid = readingInput;
+  }
+  if (!note) {
+    noteInput.setAttribute('aria-invalid', 'true');
+    $('note-err').textContent = 'Describe what you observed.';
+    invalid = noteInput;
+  }
+  if (invalid !== undefined || !parsed.ok) {
+    invalid?.focus();
+    return;
+  }
+  const severity = Number(
+    (obsForm.querySelector('input[name="severity"]:checked') as HTMLInputElement | null)?.value ??
+      '1',
+  );
+  const obsIntent = formIntent(device, localStorage, `observation:${inspectionId}`);
+  const intent = obsIntent.get();
+  const value = {
+    note,
+    severity,
+    ...(parsed.reading === undefined ? {} : { reading: parsed.reading }),
+  };
+  const submittedNote = noteInput.value;
+  const submittedReading = readingInput.value;
+  obsBusy = true;
+  void act(
+    async () => {
+      try {
+        await addObservation(session, intent, inspectionId, value);
+      } finally {
+        obsBusy = false;
+      }
+      obsIntent.done();
+      if (noteInput.value === submittedNote) noteInput.value = '';
+      if (readingInput.value === submittedReading) readingInput.value = '';
+      flash('obs-say', 'Observation saved on this device.');
+    },
+    obsForm.querySelector<HTMLButtonElement>('button[type="submit"]') ?? undefined,
+  );
+});
+
+// ---------------------------------------------------------------- sync and network
+
+const syncButton = $<HTMLButtonElement>('sync');
+syncButton.addEventListener(
   'click',
   () =>
     void act(async () => {
-      status('Syncing...');
-      const r = await replica.sync(relay);
-      status(
-        r.status === 'complete'
-          ? 'Synced.'
-          : r.status === 'partial'
-            ? `Partial: ${r.code}`
-            : `Sync failed: ${r.code}`,
-      );
-    }),
+      syncButton.setAttribute('aria-busy', 'true');
+      status(MESSAGES.syncing, 'syncing');
+      try {
+        const r = await replica.sync(relay);
+        if (r.status === 'complete') {
+          // `complete` means both sides were verified to hold the same changes (design 8.2).
+          status(MESSAGES.synced, 'synced');
+          $('sync-state').title = `Last synced at ${new Date().toLocaleTimeString()}`;
+        } else if (r.status === 'partial') {
+          const detail =
+            r.code === 'PEER_SCHEMA_OLDER'
+              ? `PEER_SCHEMA_OLDER: ${r.blocked
+                  .map((b) => `${b.collection} v${b.requiredVersion} from ${b.origin.slice(0, 8)}`)
+                  .join('; ')}`
+              : String(r.code);
+          status(
+            r.code === 'PEER_SCHEMA_OLDER' ? MESSAGES.schemaOlder : MESSAGES.notSettled,
+            'partial',
+            detail,
+          );
+        } else {
+          status(
+            navigator.onLine ? MESSAGES.failed : MESSAGES.offline,
+            navigator.onLine ? 'error' : 'offline',
+            `sync failed ${String(r.code)}`,
+          );
+        }
+      } catch (e) {
+        // Nothing local is lost when a sync fails: every change was committed before it ran.
+        status(
+          navigator.onLine ? MESSAGES.failed : MESSAGES.offline,
+          navigator.onLine ? 'error' : 'offline',
+          errorDetail(e),
+        );
+      } finally {
+        syncButton.removeAttribute('aria-busy');
+      }
+    }, syncButton),
 );
+
+const detailToggle = $<HTMLButtonElement>('sync-detail-toggle');
+detailToggle.addEventListener('click', () => {
+  const box = $('sync-detail');
+  box.hidden = !box.hidden;
+  detailToggle.setAttribute('aria-expanded', String(!box.hidden));
+  detailToggle.textContent = box.hidden ? 'Details' : 'Hide details';
+});
+
+function showNetwork(event?: Event): void {
+  if (!navigator.onLine) status(MESSAGES.offline, 'offline');
+  else if (event !== undefined && $('sync-state').dataset['state'] === 'offline')
+    status(MESSAGES.backOnline, 'ready');
+}
+addEventListener('online', showNetwork);
+addEventListener('offline', showNetwork);
 
 replica.subscribe(() => void render());
 await render();
-status('Offline-ready. Press Sync to exchange changes.');
+status(MESSAGES.ready, 'ready');
+showNetwork();

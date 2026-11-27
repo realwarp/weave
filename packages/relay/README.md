@@ -10,6 +10,11 @@ conflicts. Replicas sync with it exactly as they sync with each other.
 weave-relay --data ./relay-data --port 8787 [--host 127.0.0.1]
 ```
 
+From a clone of this repository, after `npm run build`, run the same CLI as
+`node packages/relay/dist/cli.js --data ./relay-data --port 8787`. (npm links the `weave-relay`
+command at install time, before the CLI is built, so it is not available as `npx weave-relay` in a
+fresh clone.)
+
 | Setting | Flag     | Environment         | Default        |
 | ------- | -------- | ------------------- | -------------- |
 | Data    | `--data` | `WEAVE_RELAY_DATA`  | `./relay-data` |

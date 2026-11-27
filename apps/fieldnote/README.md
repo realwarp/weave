@@ -35,6 +35,10 @@ npx playwright test -c apps/fieldnote/test/e2e   # browser smoke test
 
 Edits to different fields of one record are all kept.
 
+A reading is optional. When given, it must be a plain finite number such as `0`, `0.7` or `12`:
+text such as `abc`, `1,5` or `0x10` is refused beside the field before anything is written
+(`parseReading` in `src/logic.ts`, tested in `test/reading.test.ts`).
+
 ## Schema v1 to v2
 
 Version 2 splits `location` at the first `" / "` into `site` and `zone` (`zone` is `""` when there

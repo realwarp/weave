@@ -21,7 +21,7 @@ See `docs/diagrams/components.md`. Packages:
 |---|---|
 | `@weave/core` | ops, canonical encoding, schema and migrations, resolvers, state derivation, engine, sync engine |
 | `@weave/storage` | memory, file (Node.js, journal with checksums) and IndexedDB adapters |
-| `@weave/transport` | in-process and HTTP client transports |
+| `@weave/transport` | in-process, HTTP and WebSocket transports (plus a Node.js WebSocket server for direct device-to-device sync) |
 | `@weave/relay` | durable store-and-forward server and CLI |
 | `@weave/testing` | conformance suites, simulator, fault injection (dev only) |
 
