@@ -5,8 +5,9 @@ commit `3c175c7`; commit `5022b74` added this report. Starting point: `main` at 
 `5e3e5d3`. The v0.1.0 tag is unchanged (tag object `b9e10ff`, commit `4b26e91`).
 
 Status: pull request #2 is merged into `main` (merge commit `0b4b42c`), and the version is set to
-0.2.0 (pull request #5, merge commit `90633e7`). The `v0.2.0` tag and GitHub release are not
-created yet.
+0.2.0 (pull request #5, merge commit `90633e7`). The annotated `v0.2.0` tag (tag object `4d84f20`)
+points to `8a8f9bd` on `main` (the merge of pull request #6), and its CI run passed all 6 jobs. No
+GitHub release has been published, and nothing is published to npm.
 
 ## Result
 
@@ -163,5 +164,9 @@ repository owner's approval:
    repository owner approved it.
 2. Done: `version` is `0.2.0` in the root and every workspace `package.json` and in
    `package-lock.json`, and the changelog section is dated 2026-11-26.
-3. Pending: create and push the `v0.2.0` tag after the release PR is merged and tag creation is
-   authorized. The existing `v0.1.0` tag stays as it is.
+3. Done: the annotated `v0.2.0` tag (tag object `4d84f20`) was created on `8a8f9bd` and pushed
+   after the repository owner authorized it; the CI run for the tag
+   ([45933184761](https://github.com/realwarp/weave/actions/runs/45933184761)) passed all 6 jobs.
+   The existing `v0.1.0` tag stays as it is.
+4. Not done: a GitHub release for `v0.2.0` has not been published. The packages are not published
+   to npm; distribution is from source.

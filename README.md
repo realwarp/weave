@@ -231,8 +231,10 @@ Each package also has its own README. The full specification that WEAVE was buil
 ## Compatibility and upgrades
 
 - **Runtime:** Node.js 22 or later; IndexedDB tested in Chromium. The shipped packages are ESM only.
-- **Versions:** the repository is at version 0.2.0. The latest tag is `v0.1.0`; the `v0.2.0` tag and
-  release have not been created yet. Details of every change are in the [CHANGELOG](CHANGELOG.md).
+- **Versions:** the current version is 0.2.0, tagged as `v0.2.0` (the previous tag is `v0.1.0`).
+  No GitHub release has been published yet, and nothing is published to npm; check out the tag to
+  use exactly this version (`git checkout v0.2.0`). Details of every change are in the
+  [CHANGELOG](CHANGELOG.md).
 - **Upgrading from 0.1.0:** a 0.1.0 store opens in place; no migration is needed, and stored
   `mutationId`s still replay. Upgrade every device and the relay before turning on any 0.2.0
   feature: a 0.1.0 peer rejects `restore` ops (`NOT_SUPPORTED`), and it cannot define counter or
@@ -255,7 +257,7 @@ Each package also has its own README. The full specification that WEAVE was buil
 | Implemented and tested | Everything in [Features](#features). CI runs lint, formatting, build, test type checks, the unit, property, fuzz, integration and relay end-to-end suites on Ubuntu, Windows and macOS, plus browser tests, both app demos, benchmarks and a reproducible-build check. |
 | Opt-in (0.2.0)         | Compaction and `removePeer`, snapshots, `restore` and `update-wins`, counter and custom resolvers, holding newer-schema ops, authorization and identities, peer bans, WebSocket transport. Each is off by default; see [ADR-0015](docs/adr/0015-phase-5-contract-additions.md) for every addition and its limits. |
 | Not implemented        | Mixed-version writing (holding newer ops is supported, writing under an older schema while peers run a newer one is not), per-record authorization, encryption at rest, a WebSocket route on the relay, TLS termination.            |
-| Distribution           | Source only, from this repository. The packages are not on npm: the `@weave` npm scope belongs to another account, so they cannot be published under these names.                                                                    |
+| Distribution           | Source only, from this repository: version 0.2.0 is the `v0.2.0` tag, and its CI run passed on Ubuntu, Windows and macOS. No GitHub release has been published. The packages are not on npm: the `@weave` npm scope belongs to another account, so they cannot be published under these names. |
 
 ## Known limitations
 
